@@ -6,14 +6,19 @@ from .exceptions import ModelNotRegistered
 from .models import ModelConfig, QueueRequest, QueueResponse
 from .queue import Queue
 
-T = TypeVar("T")
+P = TypeVar("P")  # Generic for request parameters
+T = TypeVar("T")  # Generic for response results
 
 
-class QueueManager(Generic[T]):
+class QueueManager(Generic[P, T]):
     """Singleton manager for multiple model queues.
 
     Manages multiple queues for different LLM models, routing requests
     to the appropriate queue based on model_id.
+
+    Generic Parameters:
+        P: Type of the request parameters
+        T: Type of the response results
 
     Attributes:
         queues: Dictionary mapping model_id to Queue instances
@@ -33,19 +38,19 @@ class QueueManager(Generic[T]):
         """Initialize the queue manager."""
         if self._initialized:
             return
-        self.queues: Dict[str, Queue[T]] = {}
+        self.queues: Dict[str, Queue[P, T]] = {}
         self._initialized = True
 
     async def register_queue(
         self,
         model_config: ModelConfig,
-        processor_func: Callable[[QueueRequest[T]], Awaitable[T]],
+        processor_func: Callable[[QueueRequest[P]], Awaitable[T]],
     ) -> None:
         """Register a new model with its queue.
 
         Args:
             model_config: Configuration for the model
-            processor_func: Async function to process requests for this model
+            processor_func: Async function to process requests, takes QueueRequest[P] and returns T
 
         Raises:
             ValueError: If model is already registered
@@ -62,7 +67,7 @@ class QueueManager(Generic[T]):
         )
 
     async def register_all_queues(
-        self, models: List[ModelConfig], processor_func: Callable[[QueueRequest[T]], Awaitable[T]]
+        self, models: List[ModelConfig], processor_func: Callable[[QueueRequest[P]], Awaitable[T]]
     ) -> None:
         """Register multiple models at once.
 
@@ -80,14 +85,15 @@ class QueueManager(Generic[T]):
                     processor_func=processor_func,
                 )
 
-    async def submit_request(self, request: QueueRequest[T]) -> QueueResponse[T]:
+    async def submit_request(self, request: QueueRequest[P]) -> QueueResponse[T]:
         """Submit a request to the appropriate queue.
 
         Args:
             request: The request to process
 
         Returns:
-            QueueResponse with the result
+            QueueResponse with the result (if wait_for_completion=True),
+            otherwise returns immediately with PENDING status
 
         Raises:
             ModelNotRegistered: If the model_id is not registered

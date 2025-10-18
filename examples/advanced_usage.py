@@ -29,7 +29,7 @@ class MonitoredProcessor:
         self.failed_requests = 0
         self.total_processing_time = 0.0
 
-    async def process_request(self, request: QueueRequest) -> Dict[str, Any]:
+    async def process_request(self, request: QueueRequest[dict]) -> Dict[str, Any]:
         """
         Process request with monitoring.
 
@@ -48,7 +48,8 @@ class MonitoredProcessor:
         async with Timer() as timer:
             try:
                 # Simulate processing
-                prompt = request.metadata.get("prompt", "")
+                params = request.params
+                prompt = params.get("prompt", "")
 
                 # Simulate potential failure
                 if "fail" in prompt.lower():
@@ -99,7 +100,7 @@ async def demo_error_handling():
     print("\n=== Error Handling Demo ===\n")
 
     processor = MonitoredProcessor()
-    manager = QueueManager()
+    manager: QueueManager[dict, dict] = QueueManager()
 
     config = ModelConfig(
         model_id="test-model",
@@ -122,7 +123,7 @@ async def demo_error_handling():
     print(f"Submitting {len(prompts)} requests (some will fail)...\n")
 
     for prompt in prompts:
-        request = QueueRequest(model_id="test-model", metadata={"prompt": prompt})
+        request = QueueRequest(model_id="test-model", params={"prompt": prompt})
 
         response = await manager.submit_request(request)
 
@@ -148,7 +149,7 @@ async def demo_batch_processing():
     """Demonstrate batch processing multiple models."""
     print("\n\n=== Batch Processing Demo ===\n")
 
-    manager = QueueManager()
+    manager: QueueManager[dict, dict] = QueueManager()
 
     # Register multiple models
     models = [
@@ -159,7 +160,7 @@ async def demo_batch_processing():
         ),
     ]
 
-    async def simple_processor(request: QueueRequest) -> dict:
+    async def simple_processor(request: QueueRequest[dict]) -> dict:
         await asyncio.sleep(0.05)
         return {"model": request.model_id, "done": True}
 
@@ -171,7 +172,7 @@ async def demo_batch_processing():
     all_requests = []
     for model_config in models:
         for i in range(3):
-            request = QueueRequest(model_id=model_config.model_id, metadata={"batch_index": i})
+            request = QueueRequest(model_id=model_config.model_id, params={"batch_index": i})
             all_requests.append(manager.submit_request(request))
 
     print(f"Submitting {len(all_requests)} requests across {len(models)} models...")
@@ -211,9 +212,9 @@ async def demo_dynamic_configuration():
     """Demonstrate dynamic model registration."""
     print("\n\n=== Dynamic Configuration Demo ===\n")
 
-    manager = QueueManager()
+    manager: QueueManager[dict, dict] = QueueManager()
 
-    async def processor(request: QueueRequest) -> dict:
+    async def processor(request: QueueRequest[dict]) -> dict:
         await asyncio.sleep(0.05)
         return {"processed": True}
 
@@ -224,7 +225,7 @@ async def demo_dynamic_configuration():
     print(f"Registered models: {manager.get_registered_models()}")
 
     # Process some requests
-    request = QueueRequest(model_id="initial-model")
+    request = QueueRequest(model_id="initial-model", params={})
     response = await manager.submit_request(request)
     print(f"Request to initial-model: {response.status}")
 
@@ -236,8 +237,8 @@ async def demo_dynamic_configuration():
 
     # Process requests to both
     requests = [
-        QueueRequest(model_id="initial-model"),
-        QueueRequest(model_id="new-model"),
+        QueueRequest(model_id="initial-model", params={}),
+        QueueRequest(model_id="new-model", params={}),
     ]
 
     responses = await asyncio.gather(*[manager.submit_request(req) for req in requests])
@@ -246,6 +247,69 @@ async def demo_dynamic_configuration():
         print(f"Request to {resp.model_id}: {resp.status}")
 
     await manager.shutdown_all()
+
+
+async def demo_wait_for_completion():
+    """Demonstrate fire-and-forget requests with wait_for_completion=False."""
+    print("\n\n=== Wait for Completion Demo ===\n")
+
+    manager: QueueManager[dict, dict] = QueueManager()
+
+    async def slow_processor(request: QueueRequest[dict]) -> dict:
+        await asyncio.sleep(1.0)  # Simulate slow processing
+        return {"processed": True, "request_id": request.id}
+
+    config = ModelConfig(
+        model_id="async-model",
+        rate_limit=5,
+        rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
+        time_period=10,
+    )
+
+    await manager.register_queue(config, slow_processor)
+
+    print("Submitting 3 requests with wait_for_completion=False...")
+    print("(These return immediately with PENDING status)\n")
+
+    # Fire-and-forget requests
+    async_requests = []
+    for i in range(3):
+        request = QueueRequest(
+            model_id="async-model",
+            params={"request_number": i + 1},
+            wait_for_completion=False,  # NEW FEATURE!
+        )
+        response = await manager.submit_request(request)
+        async_requests.append(response)
+        print(f"Request {i+1}: {response.status} (ID: {response.request_id[:8]})")
+
+    print("\nAll requests submitted immediately!")
+    print("Now polling for completion status...\n")
+
+    # Poll for completion
+    completed_count = 0
+    while completed_count < len(async_requests):
+        await asyncio.sleep(0.5)  # Poll every 500ms
+
+        for i, pending_response in enumerate(async_requests):
+            if pending_response.status == "pending":
+                # Check current status (fire-and-forget requests are cleaned up after completion)
+                status = await manager.get_status("async-model", pending_response.request_id)
+                if status and status.status == "completed":
+                    print(f"Request {i+1} completed! (polling)")
+                    completed_count += 1
+                    async_requests[i] = status  # Update with completed status
+                elif status is None:
+                    # Request completed and was cleaned up
+                    print(f"Request {i+1} completed and cleaned up! (polling)")
+                    completed_count += 1
+
+    print(f"\nAll {len(async_requests)} requests completed asynchronously!")
+    print("Note: Results are not available via get_status() for fire-and-forget requests.")
+    print("Use wait_for_completion=True if you need the results.")
+
+    await manager.shutdown_all()
+    manager.reset_instance()
 
 
 async def main():
@@ -257,6 +321,7 @@ async def main():
     await demo_error_handling()
     await demo_batch_processing()
     await demo_dynamic_configuration()
+    await demo_wait_for_completion()
 
     print("\n" + "=" * 60)
     print("  All demonstrations completed!")

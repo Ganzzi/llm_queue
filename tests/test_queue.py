@@ -33,7 +33,7 @@ class TestQueueBasics:
             model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
         )
 
-        request = QueueRequest(model_id="test-model")
+        request = QueueRequest(model_id="test-model", params={"test": True})
         response = await queue.enqueue(request)
 
         assert response.status == RequestStatus.COMPLETED
@@ -50,7 +50,9 @@ class TestQueueBasics:
             model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
         )
 
-        requests = [QueueRequest(model_id="test-model") for _ in range(5)]
+        requests = [
+            QueueRequest(model_id="test-model", params={"request_num": i}) for i in range(5)
+        ]
 
         responses = await asyncio.gather(*[queue.enqueue(req) for req in requests])
 
@@ -66,7 +68,7 @@ class TestQueueBasics:
             model_id="test-model", rate_limit=10, processor_func=failing_processor, time_period=60
         )
 
-        request = QueueRequest(model_id="test-model")
+        request = QueueRequest(model_id="test-model", params={"test": "fail"})
         response = await queue.enqueue(request)
 
         assert response.status == RequestStatus.FAILED
@@ -84,7 +86,7 @@ class TestQueueRateLimiting:
     async def test_requests_per_period_limiting(self):
         """Test that requests per period is enforced."""
 
-        async def slow_processor(request: QueueRequest) -> dict:
+        async def slow_processor(request: QueueRequest[dict]) -> dict:
             await asyncio.sleep(0.05)
             return {"done": True}
 
@@ -97,7 +99,7 @@ class TestQueueRateLimiting:
         )
 
         # Submit 5 requests
-        requests = [QueueRequest(model_id="test-model") for _ in range(5)]
+        requests = [QueueRequest(model_id="test-model", params={"req_id": i}) for i in range(5)]
 
         import time
 
@@ -119,7 +121,7 @@ class TestQueueRateLimiting:
         """Test concurrent request limiting."""
         processing_count = {"value": 0, "max": 0}
 
-        async def tracking_processor(request: QueueRequest) -> dict:
+        async def tracking_processor(request: QueueRequest[dict]) -> dict:
             processing_count["value"] += 1
             processing_count["max"] = max(processing_count["max"], processing_count["value"])
             await asyncio.sleep(0.1)
@@ -134,7 +136,7 @@ class TestQueueRateLimiting:
         )
 
         # Submit 5 requests
-        requests = [QueueRequest(model_id="test-model") for _ in range(5)]
+        requests = [QueueRequest(model_id="test-model", params={"req_id": i}) for i in range(5)]
         responses = await asyncio.gather(*[queue.enqueue(req) for req in requests])
 
         # All should complete
@@ -146,6 +148,55 @@ class TestQueueRateLimiting:
         await queue.shutdown()
 
 
+class TestQueueWaitForCompletion:
+    """Tests for wait_for_completion feature."""
+
+    @pytest.mark.asyncio
+    async def test_wait_for_completion_false(self, simple_processor):
+        """Test that wait_for_completion=False returns immediately with PENDING status."""
+        queue = Queue(
+            model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
+        )
+
+        request = QueueRequest(
+            model_id="test-model", params={"test": True}, wait_for_completion=False
+        )
+        response = await queue.enqueue(request)
+
+        # Should return immediately with PENDING status
+        assert response.status == RequestStatus.PENDING
+        assert response.result is None  # No result yet
+        assert response.request_id == request.id
+
+        # Wait a bit for processing to complete
+        await asyncio.sleep(0.1)
+
+        # For fire-and-forget requests, status is not available after completion
+        status = await queue.get_status(request.id)
+        assert status is None  # Request cleaned up after completion
+
+        await queue.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_wait_for_completion_true_default(self, simple_processor):
+        """Test that wait_for_completion=True (default) waits for completion."""
+        queue = Queue(
+            model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
+        )
+
+        request = QueueRequest(
+            model_id="test-model", params={"test": True}
+        )  # wait_for_completion defaults to True
+        response = await queue.enqueue(request)
+
+        # Should wait and return completed status
+        assert response.status == RequestStatus.COMPLETED
+        assert response.result["success"] is True
+        assert response.request_id == request.id
+
+        await queue.shutdown()
+
+
 class TestQueueStatus:
     """Tests for queue status tracking."""
 
@@ -153,7 +204,7 @@ class TestQueueStatus:
     async def test_get_status_pending(self):
         """Test getting status of a pending request."""
 
-        async def slow_processor(request: QueueRequest) -> dict:
+        async def slow_processor(request: QueueRequest[dict]) -> dict:
             await asyncio.sleep(1)
             return {"done": True}
 
@@ -161,7 +212,7 @@ class TestQueueStatus:
             model_id="test-model", rate_limit=1, processor_func=slow_processor, time_period=60
         )
 
-        request = QueueRequest(model_id="test-model")
+        request = QueueRequest(model_id="test-model", params={"slow": True})
 
         # Submit but don't await
         task = asyncio.create_task(queue.enqueue(request))
@@ -202,7 +253,7 @@ class TestQueueStatus:
         assert queue.get_rate_limiter_usage() == 0
 
         # Process a request
-        request = QueueRequest(model_id="test-model")
+        request = QueueRequest(model_id="test-model", params={"test": True})
         await queue.enqueue(request)
 
         # After processing, queue should be empty again
@@ -219,7 +270,7 @@ class TestQueueShutdown:
         """Test graceful shutdown waits for pending requests."""
         completed = []
 
-        async def processor(request: QueueRequest) -> dict:
+        async def processor(request: QueueRequest[dict]) -> dict:
             await asyncio.sleep(0.1)
             completed.append(request.id)
             return {"done": True}
@@ -229,7 +280,7 @@ class TestQueueShutdown:
         )
 
         # Submit requests
-        requests = [QueueRequest(model_id="test-model") for _ in range(3)]
+        requests = [QueueRequest(model_id="test-model", params={"req_id": i}) for i in range(3)]
         tasks = [asyncio.create_task(queue.enqueue(req)) for req in requests]
 
         # Give them a moment to start

@@ -36,15 +36,17 @@ pip install llm-queue[dev]
 import asyncio
 from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
 
-# Define your LLM processor function
-async def process_llm_request(request: QueueRequest) -> dict:
+# Define your LLM processor function (now with dual generics!)
+async def process_llm_request(request: QueueRequest[dict]) -> dict:
     """Process an LLM request - implement your API call here."""
+    # Access parameters from request.params instead of request.metadata
+    prompt = request.params.get("prompt", "")
     # Example: Call OpenAI API, Anthropic API, etc.
-    return {"response": "Hello from LLM!"}
+    return {"response": f"Hello from LLM! You said: {prompt}"}
 
 async def main():
-    # Initialize the queue manager
-    manager = QueueManager()
+    # Initialize the queue manager (now generic!)
+    manager: QueueManager[dict, dict] = QueueManager()
     
     # Configure a model with rate limiting
     config = ModelConfig(
@@ -57,8 +59,11 @@ async def main():
     # Register the model
     await manager.register_queue(config, process_llm_request)
     
-    # Submit a request
-    request = QueueRequest(model_id="gpt-4")
+    # Submit a request (now with params!)
+    request = QueueRequest(
+        model_id="gpt-4",
+        params={"prompt": "Tell me a joke"}  # NEW: params instead of metadata
+    )
     response = await manager.submit_request(request)
     
     print(f"Status: {response.status}")
@@ -94,6 +99,77 @@ config = ModelConfig(
     rate_limit=5,  # Max 5 concurrent requests
     rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS
 )
+```
+
+## Type-Safe API with Dual Generics
+
+**v0.2.0 introduces breaking changes for better type safety:**
+
+### Dual Generic Types
+
+The API now uses two generic types for maximum type safety:
+
+- `QueueRequest[P]`: Where `P` is the type of your input parameters
+- `QueueResponse[T]`: Where `T` is the type of your response results
+
+```python
+from pydantic import BaseModel
+from llm_queue import QueueManager, QueueRequest, QueueResponse
+
+# Define your parameter and result models
+class LLMParams(BaseModel):
+    prompt: str
+    temperature: float = 0.7
+    max_tokens: int = 100
+
+class LLMResult(BaseModel):
+    response: str
+    tokens_used: int
+    finish_reason: str
+
+# Type-safe processor
+async def process_llm_request(request: QueueRequest[LLMParams]) -> LLMResult:
+    params = request.params  # Type: LLMParams
+    # Your LLM API call here...
+    return LLMResult(
+        response="Hello!",
+        tokens_used=10,
+        finish_reason="stop"
+    )
+
+# Type-safe manager
+manager: QueueManager[LLMParams, LLMResult] = QueueManager()
+
+# Type-safe request
+request = QueueRequest(
+    model_id="gpt-4",
+    params=LLMParams(prompt="Hello", temperature=0.5)  # Typed params!
+)
+response: QueueResponse[LLMResult] = await manager.submit_request(request)
+result: LLMResult = response.result  # Fully typed!
+```
+
+### Fire-and-Forget Requests
+
+Use `wait_for_completion=False` for asynchronous processing:
+
+```python
+# Fire-and-forget request
+request = QueueRequest(
+    model_id="gpt-4",
+    params={"prompt": "Process this asynchronously"},
+    wait_for_completion=False  # NEW FEATURE!
+)
+
+# Returns immediately with PENDING status
+response = await manager.submit_request(request)
+print(response.status)  # "pending"
+
+# Poll for completion
+await asyncio.sleep(1)  # Wait for processing
+status = await manager.get_status("gpt-4", response.request_id)
+if status.status == "completed":
+    print(f"Result: {status.result}")
 ```
 
 ## Advanced Usage

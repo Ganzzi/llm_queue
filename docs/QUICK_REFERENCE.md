@@ -12,12 +12,15 @@ pip install llm-queue
 import asyncio
 from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
 
-async def processor(request: QueueRequest) -> dict:
+async def processor(request: QueueRequest[dict]) -> dict:
+    # Access parameters from request.params
+    prompt = request.params.get("prompt", "Hello")
     # Your LLM API call here
-    return {"response": "Hello!"}
+    return {"response": f"Processed: {prompt}"}
 
 async def main():
-    manager = QueueManager()
+    # Type-safe manager
+    manager: QueueManager[dict, dict] = QueueManager()
     
     config = ModelConfig(
         model_id="gpt-4",
@@ -27,7 +30,11 @@ async def main():
     
     await manager.register_queue(config, processor)
     
-    request = QueueRequest(model_id="gpt-4")
+    # Request with params
+    request = QueueRequest(
+        model_id="gpt-4",
+        params={"prompt": "Hello, world!"}
+    )
     response = await manager.submit_request(request)
     
     print(response.result)
@@ -85,12 +92,14 @@ config = ModelConfig(
 ```python
 request = QueueRequest(
     model_id="gpt-4",                   # Required: model to use
-    metadata={"prompt": "Hello"}        # Optional: custom data
+    params={"prompt": "Hello"},         # Required: input parameters (dict or Pydantic model)
+    wait_for_completion=True            # Optional: wait for completion (default: True)
 )
 
 # Automatically generated:
 # - id: Unique request ID
 # - created_at: Timestamp
+```
 # - status: Request status
 ```
 
@@ -104,6 +113,55 @@ response.status             # "completed" or "failed"
 response.result             # Result (if completed)
 response.error              # Error message (if failed)
 response.processing_time    # Time taken (seconds)
+```
+
+## v0.2.0 New Features
+
+### Dual Generic Types
+```python
+from pydantic import BaseModel
+from typing import TypeVar
+
+# Define your types
+P = TypeVar('P')  # Parameters type
+T = TypeVar('T')  # Result type
+
+class MyParams(BaseModel):
+    prompt: str
+    temperature: float
+
+class MyResult(BaseModel):
+    response: str
+    tokens: int
+
+# Type-safe usage
+manager: QueueManager[MyParams, MyResult] = QueueManager()
+
+async def processor(request: QueueRequest[MyParams]) -> MyResult:
+    return MyResult(response="Hello", tokens=10)
+
+request = QueueRequest(
+    model_id="gpt-4",
+    params=MyParams(prompt="Hi", temperature=0.7)
+)
+```
+
+### Fire-and-Forget Requests
+```python
+# Asynchronous request
+request = QueueRequest(
+    model_id="gpt-4",
+    params={"prompt": "Process later"},
+    wait_for_completion=False
+)
+
+response = await manager.submit_request(request)
+# Returns immediately with status="pending"
+
+# Poll for completion
+status = await manager.get_status("gpt-4", response.request_id)
+if status.status == "completed":
+    print(status.result)
 ```
 
 ## Request Status

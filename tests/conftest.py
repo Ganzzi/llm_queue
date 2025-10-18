@@ -31,7 +31,7 @@ async def queue_manager() -> AsyncGenerator[QueueManager, None]:
 async def simple_processor():
     """Provide a simple processor function for testing."""
 
-    async def processor(request: QueueRequest) -> dict:
+    async def processor(request: QueueRequest[dict]) -> dict:
         """Simple test processor that returns success."""
         await asyncio.sleep(0.01)  # Simulate processing
         return {"success": True, "request_id": request.id}
@@ -43,7 +43,7 @@ async def simple_processor():
 async def failing_processor():
     """Provide a processor that always fails."""
 
-    async def processor(request: QueueRequest) -> dict:
+    async def processor(request: QueueRequest[dict]) -> dict:
         """Processor that raises an exception."""
         raise ValueError("Test error")
 
@@ -96,4 +96,4 @@ def multiple_model_configs() -> list[ModelConfig]:
 @pytest.fixture
 def sample_request() -> QueueRequest:
     """Provide a sample queue request."""
-    return QueueRequest(model_id="test-model", metadata={"test": "data"})
+    return QueueRequest(model_id="test-model", params={"test": "data"})

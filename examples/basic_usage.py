@@ -5,20 +5,24 @@ from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
 
 
 # Define your LLM processor function
-async def process_llm_request(request: QueueRequest) -> dict:
+async def process_llm_request(request: QueueRequest[dict]) -> dict:
     """
     Process an LLM request.
 
     This is where you would implement your actual LLM API call.
     For this example, we just simulate a response.
     """
+    # Extract parameters from the request
+    params = request.params
+    prompt = params.get("prompt", "Hello")
+
     # Simulate some processing time
     await asyncio.sleep(0.1)
 
     return {
         "request_id": request.id,
         "model": request.model_id,
-        "response": f"Hello from {request.model_id}!",
+        "response": f"Hello from {request.model_id}! Prompt: {prompt}",
         "tokens_used": 42,
     }
 
@@ -27,8 +31,8 @@ async def main():
     """Main example function."""
     print("=== LLM Queue Basic Example ===\n")
 
-    # Initialize the queue manager (singleton)
-    manager = QueueManager()
+    # Initialize the queue manager (singleton) with type hints
+    manager: QueueManager[dict, dict] = QueueManager()
 
     # Configure a model with rate limiting
     # This allows 10 requests per 60 seconds
@@ -45,9 +49,9 @@ async def main():
     # Register the model with its processor function
     await manager.register_queue(config, process_llm_request)
 
-    # Submit a single request
+    # Submit a single request with parameters
     print("Submitting a request...")
-    request = QueueRequest(model_id="gpt-4")
+    request = QueueRequest(model_id="gpt-4", params={"prompt": "What is the meaning of life?"})
     response = await manager.submit_request(request)
 
     print(f"\nResponse received:")
@@ -57,7 +61,14 @@ async def main():
 
     # Submit multiple requests concurrently
     print("\n\nSubmitting 5 concurrent requests...")
-    requests = [QueueRequest(model_id="gpt-4") for _ in range(5)]
+    prompts = [
+        "What is AI?",
+        "Explain quantum computing",
+        "How does machine learning work?",
+        "What is the future of technology?",
+        "Tell me about space exploration",
+    ]
+    requests = [QueueRequest(model_id="gpt-4", params={"prompt": prompt}) for prompt in prompts]
 
     responses = await asyncio.gather(*[manager.submit_request(req) for req in requests])
 

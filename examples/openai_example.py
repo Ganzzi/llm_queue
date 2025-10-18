@@ -4,6 +4,8 @@ import asyncio
 import os
 from typing import Optional
 
+from pydantic import BaseModel, Field
+
 from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
 
 # Note: This example requires the openai package
@@ -16,6 +18,24 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
     print("Warning: openai package not installed. Install with: pip install openai")
+
+
+# Define Pydantic models for type safety
+class OpenAIParams(BaseModel):
+    """Parameters for OpenAI API requests."""
+
+    prompt: str = Field(..., description="The prompt to send to OpenAI")
+    max_tokens: int = Field(default=100, ge=1, le=4096, description="Maximum tokens to generate")
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
+
+
+class OpenAIResult(BaseModel):
+    """Result from OpenAI API calls."""
+
+    content: str = Field(..., description="Generated content")
+    model: str = Field(..., description="Model used")
+    usage: dict = Field(..., description="Token usage information")
+    finish_reason: str = Field(..., description="Why generation stopped")
 
 
 class OpenAIProcessor:
@@ -33,20 +53,21 @@ class OpenAIProcessor:
 
         self.client = AsyncOpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
 
-    async def process_request(self, request: QueueRequest) -> dict:
+    async def process_request(self, request: QueueRequest[OpenAIParams]) -> OpenAIResult:
         """
         Process an OpenAI API request.
 
         Args:
-            request: Queue request with metadata containing the prompt
+            request: Queue request with typed parameters
 
         Returns:
-            Response from OpenAI API
+            Typed response from OpenAI API
         """
-        # Extract prompt from request metadata
-        prompt = request.metadata.get("prompt", "Hello!")
-        max_tokens = request.metadata.get("max_tokens", 100)
-        temperature = request.metadata.get("temperature", 0.7)
+        # Extract typed parameters from the request
+        params = request.params
+        prompt = params.prompt
+        max_tokens = params.max_tokens
+        temperature = params.temperature
 
         # Call OpenAI API
         response = await self.client.chat.completions.create(
@@ -56,17 +77,17 @@ class OpenAIProcessor:
             temperature=temperature,
         )
 
-        # Return structured response
-        return {
-            "content": response.choices[0].message.content,
-            "model": response.model,
-            "usage": {
+        # Return typed response
+        return OpenAIResult(
+            content=response.choices[0].message.content,
+            model=response.model,
+            usage={
                 "prompt_tokens": response.usage.prompt_tokens,
                 "completion_tokens": response.usage.completion_tokens,
                 "total_tokens": response.usage.total_tokens,
             },
-            "finish_reason": response.choices[0].finish_reason,
-        }
+            finish_reason=response.choices[0].finish_reason,
+        )
 
 
 async def main():
@@ -81,9 +102,9 @@ async def main():
 
     print("=== LLM Queue + OpenAI Example ===\n")
 
-    # Initialize processor and manager
+    # Initialize processor and manager with type hints
     processor = OpenAIProcessor()
-    manager = QueueManager()
+    manager: QueueManager[OpenAIParams, OpenAIResult] = QueueManager()
 
     # Configure models with their rate limits
     # OpenAI has different rate limits for different models
@@ -117,9 +138,9 @@ async def main():
 
     print(f"\n\nSubmitting {len(prompts)} requests to gpt-3.5-turbo...")
 
-    # Create requests with prompts in metadata
+    # Create requests with typed parameters
     requests = [
-        QueueRequest(model_id="gpt-3.5-turbo", metadata={"prompt": prompt, "max_tokens": 100})
+        QueueRequest(model_id="gpt-3.5-turbo", params=OpenAIParams(prompt=prompt, max_tokens=100))
         for prompt in prompts
     ]
 
@@ -130,10 +151,11 @@ async def main():
     print("\n=== Results ===")
     for i, (prompt, response) in enumerate(zip(prompts, responses), 1):
         print(f"\n{i}. Prompt: {prompt}")
-        if response.status == "completed":
-            result = response.result
-            print(f"   Response: {result['content']}")
-            print(f"   Tokens: {result['usage']['total_tokens']}")
+        if response.status == "completed" and response.result:
+            # Access typed result with full IDE support
+            result: OpenAIResult = response.result
+            print(f"   Response: {result.content}")
+            print(f"   Tokens: {result.usage['total_tokens']}")
             print(f"   Time: {response.processing_time:.2f}s")
         else:
             print(f"   Error: {response.error}")

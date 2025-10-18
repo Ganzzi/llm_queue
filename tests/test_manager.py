@@ -1,5 +1,6 @@
 """Tests for the QueueManager class."""
 
+import asyncio
 import pytest
 
 from llm_queue import (
@@ -63,7 +64,7 @@ class TestQueueManagerRequests:
         """Test submitting a request."""
         await queue_manager.register_queue(sample_model_config, simple_processor)
 
-        request = QueueRequest(model_id="test-model")
+        request = QueueRequest(model_id="test-model", params={"test": True})
         response = await queue_manager.submit_request(request)
 
         assert response.status == "completed"
@@ -72,7 +73,7 @@ class TestQueueManagerRequests:
     @pytest.mark.asyncio
     async def test_submit_to_unregistered_model(self, queue_manager):
         """Test submitting to unregistered model fails."""
-        request = QueueRequest(model_id="unknown-model")
+        request = QueueRequest(model_id="unknown-model", params={"test": True})
 
         with pytest.raises(ModelNotRegistered, match="not registered"):
             await queue_manager.submit_request(request)
@@ -86,9 +87,9 @@ class TestQueueManagerRequests:
 
         # Submit to each model
         requests = [
-            QueueRequest(model_id="model-1"),
-            QueueRequest(model_id="model-2"),
-            QueueRequest(model_id="model-3"),
+            QueueRequest(model_id="model-1", params={"req": 1}),
+            QueueRequest(model_id="model-2", params={"req": 2}),
+            QueueRequest(model_id="model-3", params={"req": 3}),
         ]
 
         import asyncio
@@ -102,6 +103,31 @@ class TestQueueManagerRequests:
         assert responses[2].model_id == "model-3"
 
 
+class TestQueueManagerWaitForCompletion:
+    """Tests for wait_for_completion feature in manager."""
+
+    @pytest.mark.asyncio
+    async def test_submit_request_wait_for_completion_false(
+        self, queue_manager, sample_model_config, simple_processor
+    ):
+        """Test submitting request with wait_for_completion=False."""
+        await queue_manager.register_queue(sample_model_config, simple_processor)
+
+        request = QueueRequest(
+            model_id="test-model", params={"test": True}, wait_for_completion=False
+        )
+        response = await queue_manager.submit_request(request)
+
+        # Should return immediately with PENDING status
+        assert response.status == "pending"
+        assert response.result is None
+
+        # Wait for completion and check status
+        await asyncio.sleep(0.1)
+        status = await queue_manager.get_status("test-model", response.request_id)
+        assert status is None  # Fire-and-forget requests are cleaned up after completion
+
+
 class TestQueueManagerStatus:
     """Tests for status tracking."""
 
@@ -110,7 +136,7 @@ class TestQueueManagerStatus:
         """Test getting request status."""
         await queue_manager.register_queue(sample_model_config, simple_processor)
 
-        request = QueueRequest(model_id="test-model")
+        request = QueueRequest(model_id="test-model", params={"test": True})
         response = await queue_manager.submit_request(request)
 
         # Status after completion should return None (request cleaned up)

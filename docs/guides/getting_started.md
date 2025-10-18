@@ -42,13 +42,17 @@ config = ModelConfig(
 
 ### 3. Processor Function
 
-Define how to process requests for your LLM:
+Define how to process requests for your LLM (now with type safety!):
 
 ```python
-async def process_request(request: QueueRequest) -> dict:
+from llm_queue import QueueRequest
+
+async def process_request(request: QueueRequest[dict]) -> dict:
     """Process an LLM request."""
+    # Access parameters from request.params (not metadata!)
+    prompt = request.params.get("prompt", "Hello")
     # Your API call logic here
-    return {"response": "Hello!"}
+    return {"response": f"Processed: {prompt}"}
 ```
 
 ### 4. Register and Use
@@ -56,14 +60,18 @@ async def process_request(request: QueueRequest) -> dict:
 Register your model and submit requests:
 
 ```python
-# Register
+# Register (now with type hints!)
+manager: QueueManager[dict, dict] = QueueManager()
 await manager.register_queue(config, process_request)
 
-# Submit request
-request = QueueRequest(model_id="gpt-4")
+# Submit request (now with params!)
+request = QueueRequest(
+    model_id="gpt-4",
+    params={"prompt": "Hello, world!"}  # NEW: params instead of metadata
+)
 response = await manager.submit_request(request)
 
-print(response.result)
+print(response.result)  # {"response": "Processed: Hello, world!"}
 ```
 
 ## Rate Limiting Modes
@@ -103,18 +111,21 @@ ModelConfig(
 import asyncio
 from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
 
-async def my_llm_processor(request: QueueRequest) -> dict:
+async def my_llm_processor(request: QueueRequest[dict]) -> dict:
     """Process LLM requests."""
+    # Access parameters from request.params
+    prompt = request.params.get("prompt", "Hello")
     # Simulate API call
     await asyncio.sleep(0.1)
     return {
-        "response": f"Processed {request.id}",
-        "model": request.model_id
+        "response": f"Processed: {prompt}",
+        "model": request.model_id,
+        "request_id": request.id
     }
 
 async def main():
-    # Setup
-    manager = QueueManager()
+    # Setup (now with type hints!)
+    manager: QueueManager[dict, dict] = QueueManager()
     
     config = ModelConfig(
         model_id="my-model",
@@ -125,8 +136,11 @@ async def main():
     
     await manager.register_queue(config, my_llm_processor)
     
-    # Use
-    request = QueueRequest(model_id="my-model")
+    # Use (now with params!)
+    request = QueueRequest(
+        model_id="my-model",
+        params={"prompt": "Hello, LLM Queue!"}
+    )
     response = await manager.submit_request(request)
     
     print(f"Status: {response.status}")

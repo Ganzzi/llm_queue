@@ -7,14 +7,19 @@ from typing import Awaitable, Callable, Dict, Generic, Optional, TypeVar
 from .models import QueueRequest, QueueResponse, RateLimiterMode, RequestStatus
 from .rate_limiter import RateLimiter
 
-T = TypeVar("T")
+P = TypeVar("P")  # Generic for request parameters
+T = TypeVar("T")  # Generic for response results
 
 
-class Queue(Generic[T]):
+class Queue(Generic[P, T]):
     """Queue for managing and processing requests with rate limiting.
 
     Processes requests asynchronously while respecting rate limits.
     Each queue is associated with a specific model and rate limiter.
+
+    Generic Parameters:
+        P: Type of the request parameters
+        T: Type of the response results
 
     Attributes:
         model_id: Identifier for the LLM model
@@ -26,7 +31,7 @@ class Queue(Generic[T]):
         self,
         model_id: str,
         rate_limit: int,
-        processor_func: Callable[[QueueRequest[T]], Awaitable[T]],
+        processor_func: Callable[[QueueRequest[P]], Awaitable[T]],
         rate_limiter_mode: RateLimiterMode = RateLimiterMode.REQUESTS_PER_PERIOD,
         time_period: int = 60,
     ):
@@ -36,7 +41,7 @@ class Queue(Generic[T]):
             model_id: Identifier for the LLM
             rate_limit: For REQUESTS_PER_PERIOD: requests per time_period
                         For CONCURRENT_REQUESTS: max concurrent requests
-            processor_func: Async function to process requests
+            processor_func: Async function to process requests, takes QueueRequest[P] and returns T
             rate_limiter_mode: Mode of rate limiting
             time_period: Time period in seconds (default: 60) - REQUESTS_PER_PERIOD only
         """
@@ -45,24 +50,38 @@ class Queue(Generic[T]):
         self.rate_limiter = RateLimiter(
             limit=rate_limit, mode=rate_limiter_mode, time_period=time_period
         )
-        self.requests: Dict[str, QueueRequest[T]] = {}
+        self.requests: Dict[str, QueueRequest[P]] = {}
         self.processor_func = processor_func
         self._running = True
         self.task = asyncio.create_task(self._process_queue())
 
-    async def enqueue(self, request: QueueRequest[T]) -> QueueResponse[T]:
-        """Add a request to the queue and wait for result.
+    async def enqueue(self, request: QueueRequest[P]) -> QueueResponse[T]:
+        """Add a request to the queue and optionally wait for result.
 
         Args:
             request: The LLM request to process
 
         Returns:
-            QueueResponse with the result of processing
+            QueueResponse with the result of processing if wait_for_completion=True,
+            otherwise returns immediately with PENDING status
         """
         self.requests[request.id] = request
+
         # Create a future to wait for the result
         future: asyncio.Future[QueueResponse[T]] = asyncio.Future()
         await self.queue.put((request, future))
+
+        # If not waiting for completion, return immediately with PENDING status
+        if not request.wait_for_completion:
+            return QueueResponse(
+                request_id=request.id,
+                model_id=request.model_id,
+                status=RequestStatus.PENDING,
+                result=None,
+                error=None,
+                processing_time=None,
+                created_at=request.created_at,
+            )
 
         # Wait for the result
         result = await future
@@ -81,7 +100,7 @@ class Queue(Generic[T]):
                 except asyncio.TimeoutError:
                     continue
 
-                request: QueueRequest[T]
+                request: QueueRequest[P]
                 future: asyncio.Future[QueueResponse[T]]
                 request, future = item
 
@@ -93,11 +112,10 @@ class Queue(Generic[T]):
                 try:
                     request.status = RequestStatus.PROCESSING
                     result = await self.processor_func(request)
-                    request.result = result
                     request.status = RequestStatus.COMPLETED
                 except Exception as e:
                     request.error = str(e)
-                    request.result = None
+                    result = None
                     request.status = RequestStatus.FAILED
                 finally:
                     # Release the slot if using concurrent request mode
@@ -111,8 +129,9 @@ class Queue(Generic[T]):
                     model_id=request.model_id,
                     status=request.status,
                     error=request.error,
-                    result=request.result,
+                    result=result,
                     processing_time=processing_time,
+                    created_at=request.created_at,
                 )
 
                 # Set the future result if not cancelled
@@ -147,8 +166,9 @@ class Queue(Generic[T]):
             request_id=request.id,
             model_id=request.model_id,
             status=request.status,
-            result=request.result,
+            result=None,  # Result not available until completion
             error=request.error,
+            created_at=request.created_at,
         )
 
     def get_queue_size(self) -> int:

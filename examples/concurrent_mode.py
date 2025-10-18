@@ -5,7 +5,7 @@ import time
 from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
 
 
-async def slow_llm_processor(request: QueueRequest) -> dict:
+async def slow_llm_processor(request: QueueRequest[dict]) -> dict:
     """
     Simulate a slow LLM API call.
 
@@ -26,7 +26,7 @@ async def demo_concurrent_mode():
     print("\n=== CONCURRENT REQUESTS MODE ===")
     print("Limiting to maximum 3 concurrent requests\n")
 
-    manager = QueueManager()
+    manager: QueueManager[dict, dict] = QueueManager()
 
     # Configure with concurrent requests mode
     config = ModelConfig(
@@ -43,7 +43,7 @@ async def demo_concurrent_mode():
 
     start_time = time.time()
 
-    requests = [QueueRequest(model_id="concurrent-model") for _ in range(10)]
+    requests = [QueueRequest(model_id="concurrent-model", params={}) for _ in range(10)]
     responses = await asyncio.gather(*[manager.submit_request(req) for req in requests])
 
     total_time = time.time() - start_time
@@ -60,7 +60,7 @@ async def demo_per_period_mode():
     print("\n\n=== REQUESTS PER PERIOD MODE ===")
     print("Limiting to 5 requests per 10 seconds\n")
 
-    manager = QueueManager()
+    manager: QueueManager[dict, dict] = QueueManager()
 
     # Configure with per-period mode
     config = ModelConfig(
@@ -78,7 +78,7 @@ async def demo_per_period_mode():
 
     start_time = time.time()
 
-    requests = [QueueRequest(model_id="period-model") for _ in range(10)]
+    requests = [QueueRequest(model_id="period-model", params={}) for _ in range(10)]
     responses = await asyncio.gather(*[manager.submit_request(req) for req in requests])
 
     total_time = time.time() - start_time
@@ -94,7 +94,7 @@ async def demo_comparison():
     """Compare both modes side by side."""
     print("\n\n=== MODE COMPARISON ===\n")
 
-    manager = QueueManager()
+    manager: QueueManager[dict, dict] = QueueManager()
 
     # Register both modes
     configs = [
@@ -111,7 +111,7 @@ async def demo_comparison():
         ),
     ]
 
-    async def quick_processor(request: QueueRequest) -> dict:
+    async def quick_processor(request: QueueRequest[dict]) -> dict:
         await asyncio.sleep(0.5)
         return {"done": True}
 
@@ -122,13 +122,13 @@ async def demo_comparison():
 
     # Test concurrent mode
     start = time.time()
-    concurrent_requests = [QueueRequest(model_id="concurrent") for _ in range(6)]
+    concurrent_requests = [QueueRequest(model_id="concurrent", params={}) for _ in range(6)]
     await asyncio.gather(*[manager.submit_request(req) for req in concurrent_requests])
     concurrent_time = time.time() - start
 
     # Test per-period mode
     start = time.time()
-    period_requests = [QueueRequest(model_id="per-period") for _ in range(6)]
+    period_requests = [QueueRequest(model_id="per-period", params={}) for _ in range(6)]
     await asyncio.gather(*[manager.submit_request(req) for req in period_requests])
     period_time = time.time() - start
 
