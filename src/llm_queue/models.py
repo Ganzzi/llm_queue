@@ -3,16 +3,28 @@
 import time
 import uuid
 from enum import Enum
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Generic, List, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 P = TypeVar("P")  # Generic for request parameters
 T = TypeVar("T")  # Generic for response results
 
 
+class RateLimiterType(str, Enum):
+    """Rate limiter types for v2."""
+
+    RPM = "rpm"  # Requests per Minute
+    RPD = "rpd"  # Requests per Day
+    TPM = "tpm"  # Tokens per Minute
+    TPD = "tpd"  # Tokens per Day
+    ITPM = "itpm"  # Input Tokens per Minute
+    OTPM = "otpm"  # Output Tokens per Minute
+    CONCURRENT = "concurrent"  # Concurrent Requests
+
+
 class RateLimiterMode(str, Enum):
-    """Rate limiter operation modes."""
+    """Rate limiter operation modes (Legacy v1)."""
 
     REQUESTS_PER_PERIOD = "requests_per_period"  # Limit requests per time period
     CONCURRENT_REQUESTS = "concurrent_requests"  # Limit concurrent requests
@@ -27,28 +39,55 @@ class RequestStatus(str, Enum):
     FAILED = "failed"
 
 
-class ModelConfig(BaseModel):
-    """Configuration for a specific LLM model.
+class RateLimiterConfig(BaseModel):
+    """Configuration for a single rate limiter."""
 
-    Attributes:
-        model_id: Unique identifier for the model
-        rate_limit: Maximum number of requests (per period or concurrent)
-        rate_limiter_mode: Mode of rate limiting
-        time_period: Time period in seconds for REQUESTS_PER_PERIOD mode
-    """
-
-    model_id: str = Field(..., description="Unique identifier for the model")
-    rate_limit: int = Field(
-        ..., gt=0, description="Maximum number of requests (per period or concurrent)"
-    )
-    rate_limiter_mode: RateLimiterMode = Field(
-        default=RateLimiterMode.REQUESTS_PER_PERIOD, description="Mode of rate limiting"
-    )
-    time_period: int = Field(
-        default=60, gt=0, description="Time period in seconds for REQUESTS_PER_PERIOD mode"
+    type: RateLimiterType = Field(..., description="Type of rate limiter")
+    limit: int = Field(..., gt=0, description="Limit value")
+    time_period: Optional[int] = Field(
+        default=None, gt=0, description="Time period in seconds (optional, overrides default)"
     )
 
     model_config = ConfigDict()
+
+
+class ModelConfig(BaseModel):
+    """Configuration for a specific LLM model.
+
+    Supports both v2 multi-rate limiter configuration and v1 legacy configuration.
+    """
+
+    model_id: str = Field(..., description="Unique identifier for the model")
+    
+    # V2 Configuration
+    rate_limiters: List[RateLimiterConfig] = Field(
+        default_factory=list, description="List of rate limiters for this model"
+    )
+
+    # V1 Legacy Configuration (Deprecated)
+    rate_limit: Optional[int] = Field(
+        default=None, gt=0, description="Legacy: Maximum number of requests"
+    )
+    rate_limiter_mode: Optional[RateLimiterMode] = Field(
+        default=None, description="Legacy: Mode of rate limiting"
+    )
+    time_period: int = Field(
+        default=60, gt=0, description="Legacy: Time period in seconds"
+    )
+
+    model_config = ConfigDict()
+
+    @model_validator(mode="after")
+    def validate_config(self) -> "ModelConfig":
+        """Validate that either v1 or v2 config is provided."""
+        if not self.rate_limiters and self.rate_limit is None:
+            raise ValueError("Either rate_limiters (v2) or rate_limit (v1) must be provided")
+        
+        # If v1 config is provided but no v2 config, we could auto-convert here
+        # but for now we just ensure valid state.
+        # The Manager will handle conversion or support both.
+        
+        return self
 
 
 class QueueRequest(BaseModel, Generic[P]):
@@ -66,6 +105,10 @@ class QueueRequest(BaseModel, Generic[P]):
         status: Current status of the request
         error: Error message (if failed)
         metadata: Optional metadata for the request
+        estimated_input_tokens: Estimated input tokens for rate limiting
+        estimated_output_tokens: Estimated output tokens for rate limiting
+        actual_input_tokens: Actual input tokens used (set after processing)
+        actual_output_tokens: Actual output tokens used (set after processing)
     """
 
     id: str = Field(
@@ -86,6 +129,20 @@ class QueueRequest(BaseModel, Generic[P]):
     metadata: Optional[dict[str, Any]] = Field(
         default=None, description="Optional metadata for the request"
     )
+    
+    # Token Tracking Fields
+    estimated_input_tokens: Optional[int] = Field(
+        default=None, ge=0, description="Estimated input tokens"
+    )
+    estimated_output_tokens: Optional[int] = Field(
+        default=None, ge=0, description="Estimated output tokens"
+    )
+    actual_input_tokens: Optional[int] = Field(
+        default=None, ge=0, description="Actual input tokens used"
+    )
+    actual_output_tokens: Optional[int] = Field(
+        default=None, ge=0, description="Actual output tokens used"
+    )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -104,6 +161,8 @@ class QueueResponse(BaseModel, Generic[T]):
         error: Error message (if failed)
         processing_time: Time taken to process in seconds
         created_at: Timestamp when request was created
+        input_tokens_used: Actual input tokens used
+        output_tokens_used: Actual output tokens used
     """
 
     request_id: str = Field(..., description="ID of the original request")
@@ -116,6 +175,14 @@ class QueueResponse(BaseModel, Generic[T]):
     )
     created_at: float = Field(
         default_factory=time.time, description="Timestamp when request was created"
+    )
+    
+    # Token Usage Fields
+    input_tokens_used: Optional[int] = Field(
+        default=None, ge=0, description="Actual input tokens used"
+    )
+    output_tokens_used: Optional[int] = Field(
+        default=None, ge=0, description="Actual output tokens used"
     )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

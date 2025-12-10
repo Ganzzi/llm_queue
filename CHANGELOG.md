@@ -15,6 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive documentation
 - Examples for common use cases
 
+## [0.3.0] - 2025-12-10
+
+### Added
+- **Multi-Rate Limiter Support**: Configure multiple rate limiters per model (RPM, TPM, RPD, etc.).
+- **Token-Based Limiting**: Support for TPM (Tokens Per Minute), TPD, ITPM (Input), OTPM (Output).
+- **Token Usage Tracking**: `update_token_usage` method to adjust limits based on actual usage.
+- **RateLimiterChain**: Internal component to manage multiple limiters.
+
+### Changed
+- **Queue**: Updated to use `RateLimiterChain` internally.
+- **ModelConfig**: Added `rate_limiters` field. Legacy `rate_limit` fields are now deprecated but supported.
+- **QueueResponse**: Added `input_tokens_used` and `output_tokens_used` fields.
+
+### Deprecated
+- `RateLimiterMode` enum is deprecated in favor of `RateLimiterType`.
+- `ModelConfig.rate_limit` and `ModelConfig.rate_limiter_mode` are deprecated.
+
 ## [0.2.0] - 2025-01-XX
 
 ### Added

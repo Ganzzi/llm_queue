@@ -49,7 +49,9 @@ from .models import (
     ModelConfig,
     QueueRequest,
     QueueResponse,
+    RateLimiterConfig,
     RateLimiterMode,
+    RateLimiterType,
     RequestStatus,
 )
 from .queue import Queue
@@ -71,7 +73,9 @@ __all__ = [
     "ModelConfig",
     "QueueRequest",
     "QueueResponse",
+    "RateLimiterConfig",
     "RateLimiterMode",
+    "RateLimiterType",
     "RequestStatus",
     # Exceptions
     "LLMQueueException",

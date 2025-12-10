@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
 ## Rate Limiting Modes
 
-### 1. Requests Per Period
+### 1. Requests Per Period (Legacy)
 
 Limit the number of requests within a time window:
 
@@ -89,7 +89,7 @@ config = ModelConfig(
 )
 ```
 
-### 2. Concurrent Requests
+### 2. Concurrent Requests (Legacy)
 
 Limit the number of simultaneous requests:
 
@@ -98,6 +98,48 @@ config = ModelConfig(
     model_id="gpt-4",
     rate_limit=5,  # Max 5 concurrent requests
     rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS
+)
+```
+
+## Multi-Rate Limiter (V2)
+
+**New in v0.2.0**: Support for multiple concurrent rate limiters per model, including token-based limiting.
+
+### 1. Configure Multiple Limiters
+
+```python
+from llm_queue import RateLimiterConfig, RateLimiterType
+
+config = ModelConfig(
+    model_id="gpt-4",
+    rate_limiters=[
+        RateLimiterConfig(type=RateLimiterType.RPM, limit=500),
+        RateLimiterConfig(type=RateLimiterType.TPM, limit=30000),
+        RateLimiterConfig(type=RateLimiterType.RPD, limit=10000),
+    ]
+)
+```
+
+### 2. Token Usage Tracking
+
+Track estimated and actual token usage:
+
+```python
+# Submit with estimates
+request = QueueRequest(
+    model_id="gpt-4",
+    params={"prompt": "..."},
+    estimated_input_tokens=100,
+    estimated_output_tokens=50
+)
+response = await manager.submit_request(request)
+
+# Update with actual usage after completion
+await manager.update_token_usage(
+    model_id="gpt-4",
+    request_id=request.id,
+    input_tokens=85,
+    output_tokens=40
 )
 ```
 
@@ -328,7 +370,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Roadmap
 
-- [ ] Token bucket rate limiting algorithm
+- [x] Token-based rate limiting (TPM, TPD)
+- [x] Multi-rate limiter support
 - [ ] Priority queue support
 - [ ] Request deduplication
 - [ ] Distributed queue (Redis backend)

@@ -21,8 +21,34 @@ class TestQueueBasics:
         )
 
         assert queue.model_id == "test-model"
-        assert queue.rate_limiter.limit == 10
+        # Updated for V2: access chain
+        assert queue.rate_limiter_chain.limiters[0].limit == 10
         assert queue.get_queue_size() == 0
+
+        await queue.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_update_token_usage(self, simple_processor):
+        """Test updating token usage."""
+        queue = Queue(
+            model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
+        )
+
+        request = QueueRequest(
+            model_id="test-model",
+            params={"test": True},
+            estimated_input_tokens=100,
+            estimated_output_tokens=0,
+        )
+        await queue.enqueue(request)
+
+        # Update usage
+        await queue.update_token_usage(request.id, 50, 10)
+
+        # Check status has updated tokens
+        status = await queue.get_status(request.id)
+        assert status.input_tokens_used == 50
+        assert status.output_tokens_used == 10
 
         await queue.shutdown()
 
@@ -171,9 +197,10 @@ class TestQueueWaitForCompletion:
         # Wait a bit for processing to complete
         await asyncio.sleep(0.1)
 
-        # For fire-and-forget requests, status is not available after completion
+        # For fire-and-forget requests, status IS available after completion (history)
         status = await queue.get_status(request.id)
-        assert status is None  # Request cleaned up after completion
+        assert status is not None
+        assert status.status == RequestStatus.COMPLETED
 
         await queue.shutdown()
 

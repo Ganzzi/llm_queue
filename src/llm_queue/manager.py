@@ -3,8 +3,9 @@
 from typing import Awaitable, Callable, Dict, Generic, List, Optional, TypeVar
 
 from .exceptions import ModelNotRegistered
-from .models import ModelConfig, QueueRequest, QueueResponse
+from .models import ModelConfig, QueueRequest, QueueResponse, RateLimiterMode, RateLimiterType
 from .queue import Queue
+from .rate_limiters import create_chain
 
 P = TypeVar("P")  # Generic for request parameters
 T = TypeVar("T")  # Generic for response results
@@ -58,12 +59,19 @@ class QueueManager(Generic[P, T]):
         if model_config.model_id in self.queues:
             raise ValueError(f"Model '{model_config.model_id}' is already registered")
 
+        # Create chain if V2 config is present
+        chain = None
+        if model_config.rate_limiters:
+            chain = create_chain(model_config.rate_limiters)
+
         self.queues[model_config.model_id] = Queue(
             model_id=model_config.model_id,
-            rate_limit=model_config.rate_limit,
             processor_func=processor_func,
-            rate_limiter_mode=model_config.rate_limiter_mode,
+            rate_limit=model_config.rate_limit,
+            rate_limiter_mode=model_config.rate_limiter_mode
+            or RateLimiterMode.REQUESTS_PER_PERIOD,
             time_period=model_config.time_period,
+            rate_limiter_chain=chain,
         )
 
     async def register_all_queues(
@@ -103,6 +111,25 @@ class QueueManager(Generic[P, T]):
             raise ModelNotRegistered(f"Model '{model_id}' is not registered")
 
         return await self.queues[model_id].enqueue(request)
+
+    async def update_token_usage(
+        self, model_id: str, request_id: str, input_tokens: int, output_tokens: int
+    ) -> None:
+        """Update actual token usage for a request.
+
+        Args:
+            model_id: ID of the model
+            request_id: ID of the request
+            input_tokens: Actual input tokens used
+            output_tokens: Actual output tokens used
+
+        Raises:
+            ModelNotRegistered: If the model_id is not registered
+        """
+        if model_id not in self.queues:
+            raise ModelNotRegistered(f"Model '{model_id}' is not registered")
+
+        await self.queues[model_id].update_token_usage(request_id, input_tokens, output_tokens)
 
     async def get_status(self, model_id: str, request_id: str) -> Optional[QueueResponse[T]]:
         """Get the status of a specific request.
@@ -146,13 +173,44 @@ class QueueManager(Generic[P, T]):
             raise ModelNotRegistered(f"Model '{model_id}' is not registered")
 
         queue = self.queues[model_id]
-        return {
+        
+        # Backward compatibility fields
+        rate_limit = 0
+        rate_limiter_mode = "unknown"
+        if queue.rate_limiter_chain and queue.rate_limiter_chain.limiters:
+            first = queue.rate_limiter_chain.limiters[0]
+            rate_limit = getattr(first, "limit", 0)
+            # Map new type to old mode if possible
+            l_type = getattr(first, "rate_limiter_type", None)
+            if l_type == RateLimiterType.CONCURRENT:
+                rate_limiter_mode = RateLimiterMode.CONCURRENT_REQUESTS.value
+            elif l_type == RateLimiterType.RPM:
+                rate_limiter_mode = RateLimiterMode.REQUESTS_PER_PERIOD.value
+            else:
+                rate_limiter_mode = str(l_type)
+
+        info = {
             "model_id": model_id,
             "queue_size": queue.get_queue_size(),
             "rate_limiter_usage": queue.get_rate_limiter_usage(),
-            "rate_limit": queue.rate_limiter.limit,
-            "rate_limiter_mode": queue.rate_limiter.mode.value,
+            "rate_limit": rate_limit,
+            "rate_limiter_mode": rate_limiter_mode,
         }
+        
+        # Add detailed limiter info
+        limiters_info = []
+        if queue.rate_limiter_chain:
+            for limiter in queue.rate_limiter_chain.limiters:
+                l_type = getattr(limiter, "rate_limiter_type", "unknown")
+                limiters_info.append({
+                    "type": l_type,
+                    "usage": limiter.get_current_usage(),
+                    "limit": getattr(limiter, "limit", 0),
+                    "available": limiter.get_available_capacity(),
+                })
+        info["rate_limiters"] = limiters_info
+        
+        return info
 
     def get_all_queues_info(self) -> Dict[str, Dict[str, any]]:
         """Get information about all registered queues.

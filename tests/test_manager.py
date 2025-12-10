@@ -125,7 +125,9 @@ class TestQueueManagerWaitForCompletion:
         # Wait for completion and check status
         await asyncio.sleep(0.1)
         status = await queue_manager.get_status("test-model", response.request_id)
-        assert status is None  # Fire-and-forget requests are cleaned up after completion
+        # Completed requests are now stored in history
+        assert status is not None
+        assert status.status == "completed"
 
 
 class TestQueueManagerStatus:
@@ -139,9 +141,10 @@ class TestQueueManagerStatus:
         request = QueueRequest(model_id="test-model", params={"test": True})
         response = await queue_manager.submit_request(request)
 
-        # Status after completion should return None (request cleaned up)
+        # Status after completion should return status (request stored in history)
         status = await queue_manager.get_status("test-model", request.id)
-        assert status is None  # Completed requests are cleaned up
+        assert status is not None
+        assert status.status == "completed"
 
     @pytest.mark.asyncio
     async def test_get_status_unregistered_model(self, queue_manager):
