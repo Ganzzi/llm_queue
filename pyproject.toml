@@ -4,12 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-queue"
-version = "0.2.0"
+version = "0.3.1"
 description = "A high-performance Python package for managing LLM API calls with intelligent rate limiting"
 readme = "README.md"
-authors = [
-    { name = "Ganzzi", email = "boinguyen9701@gmail.com" }
-]
+authors = [{ name = "Ganzzi", email = "boinguyen9701@gmail.com" }]
 license = { text = "MIT" }
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -24,11 +22,17 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP",
     "Typing :: Typed",
 ]
-keywords = ["llm", "rate-limiting", "queue", "async", "api", "openai", "anthropic"]
-requires-python = ">=3.9"
-dependencies = [
-    "pydantic>=2.0.0",
+keywords = [
+    "llm",
+    "rate-limiting",
+    "queue",
+    "async",
+    "api",
+    "openai",
+    "anthropic",
 ]
+requires-python = ">=3.9"
+dependencies = ["pydantic>=2.0.0"]
 
 [project.optional-dependencies]
 dev = [
@@ -55,7 +59,7 @@ Repository = "https://github.com/Ganzzi/llm-queue"
 "Bug Tracker" = "https://github.com/Ganzzi/llm-queue/issues"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

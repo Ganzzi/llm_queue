@@ -4,7 +4,7 @@ import asyncio
 import pytest
 from typing import AsyncGenerator
 
-from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
+from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterConfig, RateLimiterType
 
 
 @pytest.fixture
@@ -55,9 +55,9 @@ def sample_model_config() -> ModelConfig:
     """Provide a sample model configuration."""
     return ModelConfig(
         model_id="test-model",
-        rate_limit=10,
-        rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-        time_period=60,
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=10),
+        ],
     )
 
 
@@ -66,8 +66,9 @@ def concurrent_model_config() -> ModelConfig:
     """Provide a concurrent model configuration."""
     return ModelConfig(
         model_id="concurrent-model",
-        rate_limit=3,
-        rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS,
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.CONCURRENT, limit=3),
+        ],
     )
 
 
@@ -77,18 +78,21 @@ def multiple_model_configs() -> list[ModelConfig]:
     return [
         ModelConfig(
             model_id="model-1",
-            rate_limit=5,
-            rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-            time_period=10,
+            rate_limiters=[
+                RateLimiterConfig(type=RateLimiterType.RPM, limit=5),
+            ],
         ),
         ModelConfig(
-            model_id="model-2", rate_limit=3, rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS
+            model_id="model-2",
+            rate_limiters=[
+                RateLimiterConfig(type=RateLimiterType.CONCURRENT, limit=3),
+            ],
         ),
         ModelConfig(
             model_id="model-3",
-            rate_limit=10,
-            rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-            time_period=30,
+            rate_limiters=[
+                RateLimiterConfig(type=RateLimiterType.RPM, limit=10),
+            ],
         ),
     ]
 

@@ -10,7 +10,7 @@ pip install llm-queue
 
 ```python
 import asyncio
-from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
+from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterConfig, RateLimiterType
 
 async def processor(request: QueueRequest[dict]) -> dict:
     # Access parameters from request.params
@@ -24,8 +24,9 @@ async def main():
     
     config = ModelConfig(
         model_id="gpt-4",
-        rate_limit=10,
-        time_period=60
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=10),
+        ]
     )
     
     await manager.register_queue(config, processor)
@@ -43,15 +44,15 @@ async def main():
 asyncio.run(main())
 ```
 
-## Rate Limiter Modes
+## Rate Limiter Configuration
 
-### Requests Per Period
+### Requests Per Minute
 ```python
 ModelConfig(
     model_id="model",
-    rate_limit=10,          # 10 requests
-    time_period=60,         # per 60 seconds
-    rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD
+    rate_limiters=[
+        RateLimiterConfig(type=RateLimiterType.RPM, limit=10)  # 10 requests per minute
+    ]
 )
 ```
 
@@ -59,8 +60,21 @@ ModelConfig(
 ```python
 ModelConfig(
     model_id="model",
-    rate_limit=5,           # Max 5 concurrent
-    rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS
+    rate_limiters=[
+        RateLimiterConfig(type=RateLimiterType.CONCURRENT, limit=5)  # Max 5 concurrent
+    ]
+)
+```
+
+### Multiple Rate Limiters
+```python
+ModelConfig(
+    model_id="gpt-4",
+    rate_limiters=[
+        RateLimiterConfig(type=RateLimiterType.RPM, limit=500),          # 500 requests/min
+        RateLimiterConfig(type=RateLimiterType.TPM, limit=30000),        # 30k tokens/min
+        RateLimiterConfig(type=RateLimiterType.CONCURRENT, limit=10)     # Max 10 concurrent
+    ]
 )
 ```
 
@@ -82,9 +96,10 @@ await manager.shutdown_all()                                # Graceful shutdown
 ```python
 config = ModelConfig(
     model_id="gpt-4",                                       # Model identifier
-    rate_limit=10,                                          # Rate limit value
-    rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,  # Mode
-    time_period=60                                          # Time period (seconds)
+    rate_limiters=[                                         # Rate limiter configuration
+        RateLimiterConfig(type=RateLimiterType.RPM, limit=500),
+        RateLimiterConfig(type=RateLimiterType.TPM, limit=30000),
+    ]
 )
 ```
 

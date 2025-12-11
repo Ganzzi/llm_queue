@@ -10,7 +10,7 @@ This package provides:
 
 Example:
     >>> import asyncio
-    >>> from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
+    >>> from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterConfig, RateLimiterType
     >>>
     >>> async def processor(request):
     ...     # Your LLM call logic here
@@ -19,17 +19,18 @@ Example:
     >>> async def main():
     ...     manager = QueueManager()
     ...
-    ...     # Register a model
+    ...     # Register a model with rate limiters
     ...     config = ModelConfig(
     ...         model_id="gpt-4",
-    ...         rate_limit=10,
-    ...         rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-    ...         time_period=60
+    ...         rate_limiters=[
+    ...             RateLimiterConfig(type=RateLimiterType.RPM, limit=500),
+    ...             RateLimiterConfig(type=RateLimiterType.TPM, limit=30000),
+    ...         ]
     ...     )
     ...     await manager.register_queue(config, processor)
     ...
     ...     # Submit a request
-    ...     request = QueueRequest(model_id="gpt-4")
+    ...     request = QueueRequest(model_id="gpt-4", params={"prompt": "Hello"})
     ...     response = await manager.submit_request(request)
     ...     print(response.result)
     >>>
@@ -50,12 +51,10 @@ from .models import (
     QueueRequest,
     QueueResponse,
     RateLimiterConfig,
-    RateLimiterMode,
     RateLimiterType,
     RequestStatus,
 )
 from .queue import Queue
-from .rate_limiter import RateLimiter
 from .utils import Timer, get_logger, setup_logging, with_timeout
 from .__version__ import __version__, __author__, __email__, __license__
 
@@ -68,13 +67,11 @@ __all__ = [
     # Main classes
     "QueueManager",
     "Queue",
-    "RateLimiter",
     # Models
     "ModelConfig",
     "QueueRequest",
     "QueueResponse",
     "RateLimiterConfig",
-    "RateLimiterMode",
     "RateLimiterType",
     "RequestStatus",
     # Exceptions

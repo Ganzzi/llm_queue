@@ -1,7 +1,7 @@
 """Basic usage example of llm-queue package."""
 
 import asyncio
-from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
+from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterConfig, RateLimiterType
 
 
 # Define your LLM processor function
@@ -35,16 +35,16 @@ async def main():
     manager: QueueManager[dict, dict] = QueueManager()
 
     # Configure a model with rate limiting
-    # This allows 10 requests per 60 seconds
+    # This allows 10 requests per minute
     config = ModelConfig(
         model_id="gpt-4",
-        rate_limit=10,
-        rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-        time_period=60,
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=10),
+        ],
     )
 
     print(f"Registering model: {config.model_id}")
-    print(f"Rate limit: {config.rate_limit} requests per {config.time_period} seconds\n")
+    print(f"Rate limit: 10 requests per minute\n")
 
     # Register the model with its processor function
     await manager.register_queue(config, process_llm_request)

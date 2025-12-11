@@ -7,13 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Initial package structure
-- Core queue and rate limiting functionality
-- Support for two rate limiting modes (requests per period, concurrent requests)
-- Pydantic models for type safety
-- Comprehensive documentation
-- Examples for common use cases
+## [0.3.1] - 2025-12-11
+
+### Changed
+- **Removed V1 Legacy Support**: Removed all V1 rate limiting API (`RateLimiterMode`, legacy `rate_limit` parameters).
+- `ModelConfig` now requires `rate_limiters` field (V2 multi-rate limiter API).
+- `Queue` constructor now only accepts `rate_limiter_chain` parameter.
+
+### Removed
+- **BREAKING**: Removed `RateLimiterMode` enum (use `RateLimiterType` instead).
+- **BREAKING**: Removed legacy `rate_limit`, `rate_limiter_mode`, and `time_period` parameters from `ModelConfig`.
+- **BREAKING**: Removed legacy `RateLimiter` class (use `RateLimiterChain` with rate limiter types).
+- **BREAKING**: Removed legacy parameters from `Queue.__init__()`.
+- Deleted `rate_limiter.py` module (legacy RateLimiter class).
+- Updated all examples and documentation to use V2 API only.
+
+### Migration Guide
+Replace V1 configuration:
+```python
+# Old (V1) - No longer supported
+config = ModelConfig(
+    model_id="gpt-4",
+    rate_limit=10,
+    rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
+    time_period=60
+)
+
+# New (V2) - Use this
+config = ModelConfig(
+    model_id="gpt-4",
+    rate_limiters=[
+        RateLimiterConfig(type=RateLimiterType.RPM, limit=10),
+    ]
+)
+```
 
 ## [0.3.0] - 2025-12-10
 

@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
+from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterConfig, RateLimiterType
 
 # Note: This example requires the openai package
 # Install with: pip install openai
@@ -111,15 +111,15 @@ async def main():
     models = [
         ModelConfig(
             model_id="gpt-4",
-            rate_limit=10,  # 10 requests per minute
-            rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-            time_period=60,
+            rate_limiters=[
+                RateLimiterConfig(type=RateLimiterType.RPM, limit=10),
+            ],
         ),
         ModelConfig(
             model_id="gpt-3.5-turbo",
-            rate_limit=50,  # 50 requests per minute
-            rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-            time_period=60,
+            rate_limiters=[
+                RateLimiterConfig(type=RateLimiterType.RPM, limit=50),
+            ],
         ),
     ]
 
@@ -127,7 +127,7 @@ async def main():
     print("Registering models:")
     for model_config in models:
         await manager.register_queue(model_config, processor.process_request)
-        print(f"  ✓ {model_config.model_id} ({model_config.rate_limit} req/min)")
+        print(f"  ✓ {model_config.model_id}")
 
     # Example requests
     prompts = [

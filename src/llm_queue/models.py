@@ -23,13 +23,6 @@ class RateLimiterType(str, Enum):
     CONCURRENT = "concurrent"  # Concurrent Requests
 
 
-class RateLimiterMode(str, Enum):
-    """Rate limiter operation modes (Legacy v1)."""
-
-    REQUESTS_PER_PERIOD = "requests_per_period"  # Limit requests per time period
-    CONCURRENT_REQUESTS = "concurrent_requests"  # Limit concurrent requests
-
-
 class RequestStatus(str, Enum):
     """Status of a queue request."""
 
@@ -52,41 +45,23 @@ class RateLimiterConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    """Configuration for a specific LLM model.
-
-    Supports both v2 multi-rate limiter configuration and v1 legacy configuration.
-    """
+    """Configuration for a specific LLM model."""
 
     model_id: str = Field(..., description="Unique identifier for the model")
-    
-    # V2 Configuration
-    rate_limiters: List[RateLimiterConfig] = Field(
-        default_factory=list, description="List of rate limiters for this model"
-    )
 
-    # V1 Legacy Configuration (Deprecated)
-    rate_limit: Optional[int] = Field(
-        default=None, gt=0, description="Legacy: Maximum number of requests"
-    )
-    rate_limiter_mode: Optional[RateLimiterMode] = Field(
-        default=None, description="Legacy: Mode of rate limiting"
-    )
-    time_period: int = Field(
-        default=60, gt=0, description="Legacy: Time period in seconds"
+    # Rate Limiter Configuration
+    rate_limiters: List[RateLimiterConfig] = Field(
+        ..., description="List of rate limiters for this model"
     )
 
     model_config = ConfigDict()
 
     @model_validator(mode="after")
     def validate_config(self) -> "ModelConfig":
-        """Validate that either v1 or v2 config is provided."""
-        if not self.rate_limiters and self.rate_limit is None:
-            raise ValueError("Either rate_limiters (v2) or rate_limit (v1) must be provided")
-        
-        # If v1 config is provided but no v2 config, we could auto-convert here
-        # but for now we just ensure valid state.
-        # The Manager will handle conversion or support both.
-        
+        """Validate that rate_limiters is provided."""
+        if not self.rate_limiters:
+            raise ValueError("At least one rate_limiter must be provided")
+
         return self
 
 
@@ -129,7 +104,7 @@ class QueueRequest(BaseModel, Generic[P]):
     metadata: Optional[dict[str, Any]] = Field(
         default=None, description="Optional metadata for the request"
     )
-    
+
     # Token Tracking Fields
     estimated_input_tokens: Optional[int] = Field(
         default=None, ge=0, description="Estimated input tokens"
@@ -176,7 +151,7 @@ class QueueResponse(BaseModel, Generic[T]):
     created_at: float = Field(
         default_factory=time.time, description="Timestamp when request was created"
     )
-    
+
     # Token Usage Fields
     input_tokens_used: Optional[int] = Field(
         default=None, ge=0, description="Actual input tokens used"

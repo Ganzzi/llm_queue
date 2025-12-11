@@ -7,7 +7,6 @@ from llm_queue import (
     QueueManager,
     ModelConfig,
     QueueRequest,
-    RateLimiterMode,
     ModelNotRegistered,
 )
 
@@ -160,7 +159,8 @@ class TestQueueManagerStatus:
         info = queue_manager.get_queue_info("test-model")
 
         assert info["model_id"] == "test-model"
-        assert info["rate_limit"] == 10
+        assert "rate_limiters" in info
+        assert len(info["rate_limiters"]) > 0
         assert "queue_size" in info
         assert "rate_limiter_usage" in info
 

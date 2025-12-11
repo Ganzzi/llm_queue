@@ -34,7 +34,7 @@ pip install llm-queue[dev]
 
 ```python
 import asyncio
-from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
+from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterConfig, RateLimiterType
 
 # Define your LLM processor function (now with dual generics!)
 async def process_llm_request(request: QueueRequest[dict]) -> dict:
@@ -48,12 +48,13 @@ async def main():
     # Initialize the queue manager (now generic!)
     manager: QueueManager[dict, dict] = QueueManager()
     
-    # Configure a model with rate limiting
+    # Configure a model with rate limiting (V2 - multi-rate limiter)
     config = ModelConfig(
         model_id="gpt-4",
-        rate_limit=10,  # 10 requests per minute
-        rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-        time_period=60  # 60 seconds
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=500),
+            RateLimiterConfig(type=RateLimiterType.TPM, limit=30000),
+        ]
     )
     
     # Register the model
@@ -74,36 +75,9 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Rate Limiting Modes
+## Rate Limiting Configuration
 
-### 1. Requests Per Period (Legacy)
-
-Limit the number of requests within a time window:
-
-```python
-config = ModelConfig(
-    model_id="gpt-4",
-    rate_limit=10,  # 10 requests
-    rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-    time_period=60  # per 60 seconds
-)
-```
-
-### 2. Concurrent Requests (Legacy)
-
-Limit the number of simultaneous requests:
-
-```python
-config = ModelConfig(
-    model_id="gpt-4",
-    rate_limit=5,  # Max 5 concurrent requests
-    rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS
-)
-```
-
-## Multi-Rate Limiter (V2)
-
-**New in v0.2.0**: Support for multiple concurrent rate limiters per model, including token-based limiting.
+The `llm_queue` package now uses a flexible multi-rate limiter system (V2) that allows you to combine multiple rate limiting strategies for each model.
 
 ### 1. Configure Multiple Limiters
 
@@ -145,11 +119,7 @@ await manager.update_token_usage(
 
 ## Type-Safe API with Dual Generics
 
-**v0.2.0 introduces breaking changes for better type safety:**
-
-### Dual Generic Types
-
-The API now uses two generic types for maximum type safety:
+The API uses two generic types for maximum type safety:
 
 - `QueueRequest[P]`: Where `P` is the type of your input parameters
 - `QueueResponse[T]`: Where `T` is the type of your response results
@@ -220,10 +190,25 @@ if status.status == "completed":
 
 ```python
 models = [
-    ModelConfig(model_id="gpt-4", rate_limit=10, time_period=60),
-    ModelConfig(model_id="gpt-3.5-turbo", rate_limit=50, time_period=60),
-    ModelConfig(model_id="claude-3", rate_limit=5, 
-                rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS),
+    ModelConfig(
+        model_id="gpt-4",
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=500),
+            RateLimiterConfig(type=RateLimiterType.TPM, limit=30000),
+        ]
+    ),
+    ModelConfig(
+        model_id="gpt-3.5-turbo",
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=3500),
+        ]
+    ),
+    ModelConfig(
+        model_id="claude-3",
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.CONCURRENT, limit=5),
+        ]
+    ),
 ]
 
 manager = QueueManager()
@@ -284,14 +269,14 @@ await manager.shutdown_all()
 
 - **QueueManager**: Singleton manager for multiple queues
 - **Queue**: Individual queue for a model with rate limiting
-- **RateLimiter**: Rate limiting implementation
 
 ### Models
 
 - **ModelConfig**: Configuration for a model
 - **QueueRequest**: Request to be processed
 - **QueueResponse**: Response from processing
-- **RateLimiterMode**: Enum for rate limiting modes
+- **RateLimiterConfig**: Configuration for a single rate limiter
+- **RateLimiterType**: Enum for rate limiter types
 - **RequestStatus**: Enum for request status
 
 ### Exceptions

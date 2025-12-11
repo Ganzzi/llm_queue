@@ -3,7 +3,7 @@
 from typing import Awaitable, Callable, Dict, Generic, List, Optional, TypeVar
 
 from .exceptions import ModelNotRegistered
-from .models import ModelConfig, QueueRequest, QueueResponse, RateLimiterMode, RateLimiterType
+from .models import ModelConfig, QueueRequest, QueueResponse, RateLimiterType
 from .queue import Queue
 from .rate_limiters import create_chain
 
@@ -59,18 +59,11 @@ class QueueManager(Generic[P, T]):
         if model_config.model_id in self.queues:
             raise ValueError(f"Model '{model_config.model_id}' is already registered")
 
-        # Create chain if V2 config is present
-        chain = None
-        if model_config.rate_limiters:
-            chain = create_chain(model_config.rate_limiters)
+        chain = create_chain(model_config.rate_limiters)
 
         self.queues[model_config.model_id] = Queue(
             model_id=model_config.model_id,
             processor_func=processor_func,
-            rate_limit=model_config.rate_limit,
-            rate_limiter_mode=model_config.rate_limiter_mode
-            or RateLimiterMode.REQUESTS_PER_PERIOD,
-            time_period=model_config.time_period,
             rate_limiter_chain=chain,
         )
 
@@ -173,43 +166,28 @@ class QueueManager(Generic[P, T]):
             raise ModelNotRegistered(f"Model '{model_id}' is not registered")
 
         queue = self.queues[model_id]
-        
-        # Backward compatibility fields
-        rate_limit = 0
-        rate_limiter_mode = "unknown"
-        if queue.rate_limiter_chain and queue.rate_limiter_chain.limiters:
-            first = queue.rate_limiter_chain.limiters[0]
-            rate_limit = getattr(first, "limit", 0)
-            # Map new type to old mode if possible
-            l_type = getattr(first, "rate_limiter_type", None)
-            if l_type == RateLimiterType.CONCURRENT:
-                rate_limiter_mode = RateLimiterMode.CONCURRENT_REQUESTS.value
-            elif l_type == RateLimiterType.RPM:
-                rate_limiter_mode = RateLimiterMode.REQUESTS_PER_PERIOD.value
-            else:
-                rate_limiter_mode = str(l_type)
 
         info = {
             "model_id": model_id,
             "queue_size": queue.get_queue_size(),
             "rate_limiter_usage": queue.get_rate_limiter_usage(),
-            "rate_limit": rate_limit,
-            "rate_limiter_mode": rate_limiter_mode,
         }
-        
+
         # Add detailed limiter info
         limiters_info = []
         if queue.rate_limiter_chain:
             for limiter in queue.rate_limiter_chain.limiters:
                 l_type = getattr(limiter, "rate_limiter_type", "unknown")
-                limiters_info.append({
-                    "type": l_type,
-                    "usage": limiter.get_current_usage(),
-                    "limit": getattr(limiter, "limit", 0),
-                    "available": limiter.get_available_capacity(),
-                })
+                limiters_info.append(
+                    {
+                        "type": l_type,
+                        "usage": limiter.get_current_usage(),
+                        "limit": getattr(limiter, "limit", 0),
+                        "available": limiter.get_available_capacity(),
+                    }
+                )
         info["rate_limiters"] = limiters_info
-        
+
         return info
 
     def get_all_queues_info(self) -> Dict[str, Dict[str, any]]:

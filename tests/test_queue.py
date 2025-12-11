@@ -3,7 +3,8 @@
 import asyncio
 import pytest
 
-from llm_queue import Queue, QueueRequest, RateLimiterMode, RequestStatus
+from llm_queue import Queue, QueueRequest, RequestStatus, RateLimiterConfig, RateLimiterType
+from llm_queue.rate_limiters import create_chain
 
 
 class TestQueueBasics:
@@ -12,16 +13,15 @@ class TestQueueBasics:
     @pytest.mark.asyncio
     async def test_initialization(self, simple_processor):
         """Test queue initialization."""
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=10)])
         queue = Queue(
             model_id="test-model",
-            rate_limit=10,
             processor_func=simple_processor,
-            rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-            time_period=60,
+            rate_limiter_chain=chain,
         )
 
         assert queue.model_id == "test-model"
-        # Updated for V2: access chain
+        # V2: access chain
         assert queue.rate_limiter_chain.limiters[0].limit == 10
         assert queue.get_queue_size() == 0
 
@@ -30,8 +30,11 @@ class TestQueueBasics:
     @pytest.mark.asyncio
     async def test_update_token_usage(self, simple_processor):
         """Test updating token usage."""
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=10)])
         queue = Queue(
-            model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
+            model_id="test-model",
+            processor_func=simple_processor,
+            rate_limiter_chain=chain,
         )
 
         request = QueueRequest(
@@ -55,8 +58,11 @@ class TestQueueBasics:
     @pytest.mark.asyncio
     async def test_enqueue_and_process(self, simple_processor):
         """Test enqueuing and processing a request."""
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=10)])
         queue = Queue(
-            model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
+            model_id="test-model",
+            processor_func=simple_processor,
+            rate_limiter_chain=chain,
         )
 
         request = QueueRequest(model_id="test-model", params={"test": True})
@@ -72,8 +78,11 @@ class TestQueueBasics:
     @pytest.mark.asyncio
     async def test_multiple_requests(self, simple_processor):
         """Test processing multiple requests."""
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=10)])
         queue = Queue(
-            model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
+            model_id="test-model",
+            processor_func=simple_processor,
+            rate_limiter_chain=chain,
         )
 
         requests = [
@@ -90,8 +99,11 @@ class TestQueueBasics:
     @pytest.mark.asyncio
     async def test_failed_request(self, failing_processor):
         """Test handling of failed requests."""
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=10)])
         queue = Queue(
-            model_id="test-model", rate_limit=10, processor_func=failing_processor, time_period=60
+            model_id="test-model",
+            processor_func=failing_processor,
+            rate_limiter_chain=chain,
         )
 
         request = QueueRequest(model_id="test-model", params={"test": "fail"})
@@ -116,12 +128,11 @@ class TestQueueRateLimiting:
             await asyncio.sleep(0.05)
             return {"done": True}
 
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=3, time_period=1)])
         queue = Queue(
             model_id="test-model",
-            rate_limit=3,
             processor_func=slow_processor,
-            rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-            time_period=1,
+            rate_limiter_chain=chain,
         )
 
         # Submit 5 requests
@@ -154,11 +165,11 @@ class TestQueueRateLimiting:
             processing_count["value"] -= 1
             return {"done": True}
 
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.CONCURRENT, limit=2)])
         queue = Queue(
             model_id="test-model",
-            rate_limit=2,
             processor_func=tracking_processor,
-            rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS,
+            rate_limiter_chain=chain,
         )
 
         # Submit 5 requests
@@ -180,8 +191,11 @@ class TestQueueWaitForCompletion:
     @pytest.mark.asyncio
     async def test_wait_for_completion_false(self, simple_processor):
         """Test that wait_for_completion=False returns immediately with PENDING status."""
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=10)])
         queue = Queue(
-            model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
+            model_id="test-model",
+            processor_func=simple_processor,
+            rate_limiter_chain=chain,
         )
 
         request = QueueRequest(
@@ -207,8 +221,11 @@ class TestQueueWaitForCompletion:
     @pytest.mark.asyncio
     async def test_wait_for_completion_true_default(self, simple_processor):
         """Test that wait_for_completion=True (default) waits for completion."""
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=10)])
         queue = Queue(
-            model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
+            model_id="test-model",
+            processor_func=simple_processor,
+            rate_limiter_chain=chain,
         )
 
         request = QueueRequest(
@@ -235,8 +252,11 @@ class TestQueueStatus:
             await asyncio.sleep(1)
             return {"done": True}
 
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=1)])
         queue = Queue(
-            model_id="test-model", rate_limit=1, processor_func=slow_processor, time_period=60
+            model_id="test-model",
+            processor_func=slow_processor,
+            rate_limiter_chain=chain,
         )
 
         request = QueueRequest(model_id="test-model", params={"slow": True})
@@ -260,8 +280,11 @@ class TestQueueStatus:
     @pytest.mark.asyncio
     async def test_get_status_nonexistent(self, simple_processor):
         """Test getting status of non-existent request."""
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=10)])
         queue = Queue(
-            model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
+            model_id="test-model",
+            processor_func=simple_processor,
+            rate_limiter_chain=chain,
         )
 
         status = await queue.get_status("nonexistent-id")
@@ -272,8 +295,11 @@ class TestQueueStatus:
     @pytest.mark.asyncio
     async def test_queue_metrics(self, simple_processor):
         """Test queue size and usage metrics."""
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=10)])
         queue = Queue(
-            model_id="test-model", rate_limit=10, processor_func=simple_processor, time_period=60
+            model_id="test-model",
+            processor_func=simple_processor,
+            rate_limiter_chain=chain,
         )
 
         assert queue.get_queue_size() == 0
@@ -302,8 +328,11 @@ class TestQueueShutdown:
             completed.append(request.id)
             return {"done": True}
 
+        chain = create_chain([RateLimiterConfig(type=RateLimiterType.RPM, limit=10)])
         queue = Queue(
-            model_id="test-model", rate_limit=10, processor_func=processor, time_period=60
+            model_id="test-model",
+            processor_func=processor,
+            rate_limiter_chain=chain,
         )
 
         # Submit requests

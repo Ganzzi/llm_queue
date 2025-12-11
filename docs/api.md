@@ -5,8 +5,9 @@ This document provides a comprehensive API reference for the `llm_queue` package
 ## Table of Contents
 
 - [Core Classes](#core-classes)
-  - [QueueManager](#queuemanager)
-  - [Queue](#queue)
+  - [QueueManager](#queuemanage---
+
+## Request/Response Models](#queue)
 - [Configuration Models](#configuration-models)
   - [ModelConfig](#modelconfig)
   - [RateLimiterConfig](#ratelimiterconfig)
@@ -15,7 +16,6 @@ This document provides a comprehensive API reference for the `llm_queue` package
   - [QueueResponse](#queueresponse)
 - [Enums](#enums)
   - [RateLimiterType](#ratelimitertype)
-  - [RateLimiterMode](#ratelimitermode)
   - [RequestStatus](#requeststatus)
 - [Exceptions](#exceptions)
 
@@ -82,26 +82,17 @@ queue = Queue(
 
 ### ModelConfig
 
-Configuration for a model's queue and rate limiting.
+Configuration for a specific LLM model.
 
 ```python
 from llm_queue import ModelConfig, RateLimiterConfig, RateLimiterType
 
-# V2 Configuration (recommended)
 config = ModelConfig(
     model_id="gpt-4",
     rate_limiters=[
         RateLimiterConfig(type=RateLimiterType.RPM, limit=500),
         RateLimiterConfig(type=RateLimiterType.TPM, limit=30000),
     ]
-)
-
-# V1 Configuration (legacy, still supported)
-config = ModelConfig(
-    model_id="gpt-4",
-    rate_limit=10,
-    rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-    time_period=60
 )
 ```
 
@@ -110,10 +101,7 @@ config = ModelConfig(
 | Field | Type | Description |
 |-------|------|-------------|
 | `model_id` | `str` | Unique identifier for the model |
-| `rate_limiters` | `List[RateLimiterConfig]` | V2: List of rate limiter configurations |
-| `rate_limit` | `Optional[int]` | V1 (deprecated): Rate limit value |
-| `rate_limiter_mode` | `Optional[RateLimiterMode]` | V1 (deprecated): Rate limiting mode |
-| `time_period` | `Optional[int]` | V1 (deprecated): Time period in seconds |
+| `rate_limiters` | `List[RateLimiterConfig]` | List of rate limiter configurations |
 
 ---
 
@@ -266,7 +254,12 @@ async def processor(request):
 async def main():
     manager = QueueManager()
     
-    config = ModelConfig(model_id="my-model", rate_limit=10, time_period=60)
+    config = ModelConfig(
+        model_id="my-model",
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=10),
+        ]
+    )
     await manager.register_queue(config, processor)
     
     request = QueueRequest(model_id="my-model", params={"text": "Hello"})

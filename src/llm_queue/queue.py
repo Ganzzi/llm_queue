@@ -7,7 +7,6 @@ from typing import Awaitable, Callable, Dict, Generic, Optional, TypeVar
 from .models import (
     QueueRequest,
     QueueResponse,
-    RateLimiterMode,
     RateLimiterType,
     RequestStatus,
 )
@@ -28,20 +27,14 @@ class Queue(Generic[P, T]):
         self,
         model_id: str,
         processor_func: Callable[[QueueRequest[P]], Awaitable[T]],
-        rate_limit: Optional[int] = None,
-        rate_limiter_mode: RateLimiterMode = RateLimiterMode.REQUESTS_PER_PERIOD,
-        time_period: int = 60,
-        rate_limiter_chain: Optional[RateLimiterChain] = None,
+        rate_limiter_chain: RateLimiterChain,
     ):
         """Initialize a queue for a specific LLM.
 
         Args:
             model_id: Identifier for the LLM
             processor_func: Async function to process requests
-            rate_limit: Legacy: requests per period or max concurrent
-            rate_limiter_mode: Legacy: Mode of rate limiting
-            time_period: Legacy: Time period in seconds
-            rate_limiter_chain: V2: Configured rate limiter chain
+            rate_limiter_chain: Configured rate limiter chain
         """
         self.model_id = model_id
         self.queue: asyncio.Queue = asyncio.Queue()
@@ -52,23 +45,7 @@ class Queue(Generic[P, T]):
         self._max_completed_history = 1000
         
         self._running = True
-
-        if rate_limiter_chain:
-            self.rate_limiter_chain = rate_limiter_chain
-        else:
-            # Legacy initialization
-            if rate_limit is None:
-                raise ValueError("rate_limit must be provided if rate_limiter_chain is not set")
-
-            if rate_limiter_mode == RateLimiterMode.CONCURRENT_REQUESTS:
-                limiter = ConcurrentRateLimiter(limit=rate_limit)
-                # Set type for chain logic
-                setattr(limiter, "rate_limiter_type", RateLimiterType.CONCURRENT)
-            else:
-                limiter = RequestRateLimiter(limit=rate_limit, time_period=time_period)
-                setattr(limiter, "rate_limiter_type", RateLimiterType.RPM)
-
-            self.rate_limiter_chain = RateLimiterChain([limiter])
+        self.rate_limiter_chain = rate_limiter_chain
 
         self.task = asyncio.create_task(self._process_queue())
 

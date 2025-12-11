@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterMode
+from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterConfig, RateLimiterType
 
 
 async def slow_llm_processor(request: QueueRequest[dict]) -> dict:
@@ -31,8 +31,9 @@ async def demo_concurrent_mode():
     # Configure with concurrent requests mode
     config = ModelConfig(
         model_id="concurrent-model",
-        rate_limit=3,  # Max 3 concurrent requests
-        rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS,
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.CONCURRENT, limit=3),
+        ],
     )
 
     await manager.register_queue(config, slow_llm_processor)
@@ -65,9 +66,9 @@ async def demo_per_period_mode():
     # Configure with per-period mode
     config = ModelConfig(
         model_id="period-model",
-        rate_limit=5,  # 5 requests
-        rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-        time_period=10,  # per 10 seconds
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=5, time_period=10),
+        ],
     )
 
     await manager.register_queue(config, slow_llm_processor)
@@ -100,14 +101,15 @@ async def demo_comparison():
     configs = [
         ModelConfig(
             model_id="concurrent",
-            rate_limit=2,
-            rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS,
+            rate_limiters=[
+                RateLimiterConfig(type=RateLimiterType.CONCURRENT, limit=2),
+            ],
         ),
         ModelConfig(
             model_id="per-period",
-            rate_limit=2,
-            rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-            time_period=5,
+            rate_limiters=[
+                RateLimiterConfig(type=RateLimiterType.RPM, limit=2, time_period=5),
+            ],
         ),
     ]
 

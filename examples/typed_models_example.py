@@ -9,7 +9,7 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
-from llm_queue import ModelConfig, QueueManager, QueueRequest, RateLimiterMode
+from llm_queue import ModelConfig, QueueManager, QueueRequest, RateLimiterConfig, RateLimiterType
 
 
 # Define your parameter model
@@ -77,9 +77,9 @@ async def main():
     # Configure model
     config = ModelConfig(
         model_id="gpt-4",
-        rate_limit=5,  # 5 requests per minute
-        rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-        time_period=60,
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=5),
+        ],
     )
 
     # Register queue with typed processor

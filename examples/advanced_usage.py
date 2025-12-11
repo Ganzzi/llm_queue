@@ -7,7 +7,8 @@ from llm_queue import (
     QueueManager,
     ModelConfig,
     QueueRequest,
-    RateLimiterMode,
+    RateLimiterConfig,
+    RateLimiterType,
     setup_logging,
     get_logger,
     Timer,
@@ -104,9 +105,9 @@ async def demo_error_handling():
 
     config = ModelConfig(
         model_id="test-model",
-        rate_limit=5,
-        rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-        time_period=10,
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=5, time_period=10),
+        ],
     )
 
     await manager.register_queue(config, processor.process_request)
@@ -153,10 +154,23 @@ async def demo_batch_processing():
 
     # Register multiple models
     models = [
-        ModelConfig(model_id="model-a", rate_limit=5, time_period=10),
-        ModelConfig(model_id="model-b", rate_limit=3, time_period=10),
         ModelConfig(
-            model_id="model-c", rate_limit=2, rate_limiter_mode=RateLimiterMode.CONCURRENT_REQUESTS
+            model_id="model-a",
+            rate_limiters=[
+                RateLimiterConfig(type=RateLimiterType.RPM, limit=5, time_period=10),
+            ],
+        ),
+        ModelConfig(
+            model_id="model-b",
+            rate_limiters=[
+                RateLimiterConfig(type=RateLimiterType.RPM, limit=3, time_period=10),
+            ],
+        ),
+        ModelConfig(
+            model_id="model-c",
+            rate_limiters=[
+                RateLimiterConfig(type=RateLimiterType.CONCURRENT, limit=2),
+            ],
         ),
     ]
 
@@ -261,9 +275,9 @@ async def demo_wait_for_completion():
 
     config = ModelConfig(
         model_id="async-model",
-        rate_limit=5,
-        rate_limiter_mode=RateLimiterMode.REQUESTS_PER_PERIOD,
-        time_period=10,
+        rate_limiters=[
+            RateLimiterConfig(type=RateLimiterType.RPM, limit=5, time_period=10),
+        ],
     )
 
     await manager.register_queue(config, slow_processor)
