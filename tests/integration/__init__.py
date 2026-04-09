@@ -1,0 +1,1 @@
+"""Integration tests for llm_queue package (requires external dependencies)."""

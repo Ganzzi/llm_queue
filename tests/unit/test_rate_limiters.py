@@ -12,6 +12,7 @@ from llm_queue.rate_limiters import (
 from llm_queue.models import RateLimiterType, QueueRequest
 
 
+@pytest.mark.unit
 class TestTokenRateLimiter:
     """Tests for TokenRateLimiter."""
 
@@ -40,6 +41,7 @@ class TestTokenRateLimiter:
         assert limiter.get_current_usage() == 100
 
 
+@pytest.mark.unit
 class TestRateLimiterChain:
     """Tests for RateLimiterChain."""
 

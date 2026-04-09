@@ -7,6 +7,7 @@ from llm_queue import Queue, QueueRequest, RequestStatus, RateLimiterConfig, Rat
 from llm_queue.rate_limiters import create_chain
 
 
+@pytest.mark.unit
 class TestQueueBasics:
     """Basic queue functionality tests."""
 
@@ -116,6 +117,7 @@ class TestQueueBasics:
         await queue.shutdown()
 
 
+@pytest.mark.unit
 class TestQueueRateLimiting:
     """Tests for rate limiting behavior."""
 
@@ -185,6 +187,8 @@ class TestQueueRateLimiting:
         await queue.shutdown()
 
 
+@pytest.mark.unit
+@pytest.mark.unit
 class TestQueueWaitForCompletion:
     """Tests for wait_for_completion feature."""
 
@@ -241,6 +245,7 @@ class TestQueueWaitForCompletion:
         await queue.shutdown()
 
 
+@pytest.mark.unit
 class TestQueueStatus:
     """Tests for queue status tracking."""
 
@@ -315,6 +320,7 @@ class TestQueueStatus:
         await queue.shutdown()
 
 
+@pytest.mark.unit
 class TestQueueShutdown:
     """Tests for queue shutdown."""
 

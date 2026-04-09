@@ -21,22 +21,23 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+        pip install uv
+        uv sync --all-groups --all-extras
     
     - name: Check code formatting with black
       run: |
-        black --check src/ tests/ examples/
+        uv run black --check src/ tests/ examples/
     
     - name: Check import sorting with isort
       run: |
-        isort --check-only src/ tests/ examples/
+        uv run isort --check-only src/ tests/ examples/
     
     - name: Lint with flake8
       run: |
-        flake8 src/ tests/ examples/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 src/ tests/ examples/ --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+        uv run flake8 src/ tests/ examples/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        uv run flake8 src/ tests/ examples/ --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
     
     - name: Type check with mypy
       run: |
-        mypy src/llm_queue --ignore-missing-imports
+        uv run mypy src/llm_queue --ignore-missing-imports
       continue-on-error: true

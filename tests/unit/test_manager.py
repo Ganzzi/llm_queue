@@ -11,6 +11,7 @@ from llm_queue import (
 )
 
 
+@pytest.mark.unit
 class TestQueueManagerBasics:
     """Basic QueueManager functionality tests."""
 
@@ -55,6 +56,7 @@ class TestQueueManagerBasics:
         assert "model-3" in registered
 
 
+@pytest.mark.unit
 class TestQueueManagerRequests:
     """Tests for request submission and processing."""
 
@@ -102,6 +104,7 @@ class TestQueueManagerRequests:
         assert responses[2].model_id == "model-3"
 
 
+@pytest.mark.unit
 class TestQueueManagerWaitForCompletion:
     """Tests for wait_for_completion feature in manager."""
 
@@ -129,6 +132,7 @@ class TestQueueManagerWaitForCompletion:
         assert status.status == "completed"
 
 
+@pytest.mark.unit
 class TestQueueManagerStatus:
     """Tests for status tracking."""
 
@@ -179,6 +183,7 @@ class TestQueueManagerStatus:
         assert "model-3" in all_info
 
 
+@pytest.mark.unit
 class TestQueueManagerShutdown:
     """Tests for manager shutdown."""
 

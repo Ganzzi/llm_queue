@@ -132,3 +132,9 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+.gitnexus
+
+# Claude Code
+.claude/
+AGENTS.md
+CLAUDE.md

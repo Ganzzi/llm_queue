@@ -1,23 +1,6 @@
 # LLM Queue
 
-[![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-
 A high-performance Python package for managing LLM API calls with intelligent rate limiting and queueing.
-
-## Features
-
-- ✅ **Async-First**: Built on asyncio for maximum performance
-- ✅ **Multiple Rate Limiting Modes**: 
-  - Requests per time period (e.g., 10 requests/minute)
-  - Concurrent requests (e.g., max 5 concurrent)
-- ✅ **Per-Model Configuration**: Different limits for different models
-- ✅ **Type-Safe**: Full type hints with Pydantic models
-- ✅ **Generic Support**: Flexible result types with TypeVar
-- ✅ **Status Tracking**: Monitor request lifecycle
-- ✅ **Singleton Manager**: Centralized queue management
-- ✅ **Performance Optimized**: Minimal overhead, maximum throughput
 
 ## Installation
 
@@ -36,19 +19,18 @@ pip install llm-queue[dev]
 import asyncio
 from llm_queue import QueueManager, ModelConfig, QueueRequest, RateLimiterConfig, RateLimiterType
 
-# Define your LLM processor function (now with dual generics!)
+# Define your LLM processor function
 async def process_llm_request(request: QueueRequest[dict]) -> dict:
     """Process an LLM request - implement your API call here."""
-    # Access parameters from request.params instead of request.metadata
     prompt = request.params.get("prompt", "")
-    # Example: Call OpenAI API, Anthropic API, etc.
+    # Call your LLM API (OpenAI, Anthropic, etc.)
     return {"response": f"Hello from LLM! You said: {prompt}"}
 
 async def main():
-    # Initialize the queue manager (now generic!)
+    # Initialize the queue manager
     manager: QueueManager[dict, dict] = QueueManager()
     
-    # Configure a model with rate limiting (V2 - multi-rate limiter)
+    # Configure a model with rate limiting
     config = ModelConfig(
         model_id="gpt-4",
         rate_limiters=[
@@ -60,26 +42,34 @@ async def main():
     # Register the model
     await manager.register_queue(config, process_llm_request)
     
-    # Submit a request (now with params!)
+    # Submit a request
     request = QueueRequest(
         model_id="gpt-4",
-        params={"prompt": "Tell me a joke"}  # NEW: params instead of metadata
+        params={"prompt": "Tell me a joke"}
     )
     response = await manager.submit_request(request)
     
     print(f"Status: {response.status}")
     print(f"Result: {response.result}")
-    print(f"Processing time: {response.processing_time}s")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+## Features
+
+- Async-first design built on asyncio
+- Multiple rate limiting modes: requests per period (RPM/RPD), tokens per period (TPM/TPD), concurrent requests
+- Per-model configuration with multiple rate limiters
+- Type-safe API with full type hints and Pydantic models
+- Generic support for flexible parameter and result types
+- Request status tracking and monitoring
+- Singleton manager for centralized queue management
+- Token usage tracking with estimation and correction
+
 ## Rate Limiting Configuration
 
-The `llm_queue` package now uses a flexible multi-rate limiter system (V2) that allows you to combine multiple rate limiting strategies for each model.
-
-### 1. Configure Multiple Limiters
+The package uses a flexible multi-rate limiter system that allows combining multiple rate limiting strategies:
 
 ```python
 from llm_queue import RateLimiterConfig, RateLimiterType
@@ -94,7 +84,7 @@ config = ModelConfig(
 )
 ```
 
-### 2. Token Usage Tracking
+### Token Usage Tracking
 
 Track estimated and actual token usage:
 
@@ -117,259 +107,89 @@ await manager.update_token_usage(
 )
 ```
 
-## Type-Safe API with Dual Generics
-
-The API uses two generic types for maximum type safety:
-
-- `QueueRequest[P]`: Where `P` is the type of your input parameters
-- `QueueResponse[T]`: Where `T` is the type of your response results
-
-```python
-from pydantic import BaseModel
-from llm_queue import QueueManager, QueueRequest, QueueResponse
-
-# Define your parameter and result models
-class LLMParams(BaseModel):
-    prompt: str
-    temperature: float = 0.7
-    max_tokens: int = 100
-
-class LLMResult(BaseModel):
-    response: str
-    tokens_used: int
-    finish_reason: str
-
-# Type-safe processor
-async def process_llm_request(request: QueueRequest[LLMParams]) -> LLMResult:
-    params = request.params  # Type: LLMParams
-    # Your LLM API call here...
-    return LLMResult(
-        response="Hello!",
-        tokens_used=10,
-        finish_reason="stop"
-    )
-
-# Type-safe manager
-manager: QueueManager[LLMParams, LLMResult] = QueueManager()
-
-# Type-safe request
-request = QueueRequest(
-    model_id="gpt-4",
-    params=LLMParams(prompt="Hello", temperature=0.5)  # Typed params!
-)
-response: QueueResponse[LLMResult] = await manager.submit_request(request)
-result: LLMResult = response.result  # Fully typed!
-```
-
-### Fire-and-Forget Requests
-
-Use `wait_for_completion=False` for asynchronous processing:
-
-```python
-# Fire-and-forget request
-request = QueueRequest(
-    model_id="gpt-4",
-    params={"prompt": "Process this asynchronously"},
-    wait_for_completion=False  # NEW FEATURE!
-)
-
-# Returns immediately with PENDING status
-response = await manager.submit_request(request)
-print(response.status)  # "pending"
-
-# Poll for completion
-await asyncio.sleep(1)  # Wait for processing
-status = await manager.get_status("gpt-4", response.request_id)
-if status.status == "completed":
-    print(f"Result: {status.result}")
-```
-
-## Advanced Usage
-
-### Multiple Models
-
-```python
-models = [
-    ModelConfig(
-        model_id="gpt-4",
-        rate_limiters=[
-            RateLimiterConfig(type=RateLimiterType.RPM, limit=500),
-            RateLimiterConfig(type=RateLimiterType.TPM, limit=30000),
-        ]
-    ),
-    ModelConfig(
-        model_id="gpt-3.5-turbo",
-        rate_limiters=[
-            RateLimiterConfig(type=RateLimiterType.RPM, limit=3500),
-        ]
-    ),
-    ModelConfig(
-        model_id="claude-3",
-        rate_limiters=[
-            RateLimiterConfig(type=RateLimiterType.CONCURRENT, limit=5),
-        ]
-    ),
-]
-
-manager = QueueManager()
-await manager.register_all_queues(models, process_llm_request)
-```
-
-### Status Monitoring
-
-```python
-# Get status of a specific request
-status = await manager.get_status(model_id="gpt-4", request_id=request.id)
-
-# Get queue information
-queue_info = manager.get_queue_info("gpt-4")
-print(f"Queue size: {queue_info['queue_size']}")
-print(f"Rate limiter usage: {queue_info['rate_limiter_usage']}")
-
-# Get all queues information
-all_info = manager.get_all_queues_info()
-```
-
-### Graceful Shutdown
-
-```python
-# Shutdown all queues gracefully
-await manager.shutdown_all()
-```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    QueueManager                         │
-│  (Singleton - manages multiple model queues)            │
-└─────────────┬───────────────────────────┬───────────────┘
-              │                           │
-    ┌─────────▼─────────┐       ┌────────▼────────┐
-    │   Queue (GPT-4)   │       │ Queue (Claude)  │
-    │  ┌──────────────┐ │       │ ┌─────────────┐│
-    │  │ Rate Limiter │ │       │ │Rate Limiter ││
-    │  └──────────────┘ │       │ └─────────────┘│
-    │  ┌──────────────┐ │       │ ┌─────────────┐│
-    │  │ Async Queue  │ │       │ │Async Queue  ││
-    │  └──────────────┘ │       │ └─────────────┘│
-    └───────────────────┘       └─────────────────┘
-```
-
-## Performance
-
-- **Throughput**: 1000+ requests/second per queue
-- **Latency**: <10ms queue overhead
-- **Memory**: Efficient queue management with automatic cleanup
-- **Accuracy**: 99.9%+ rate limit compliance
-
-## API Reference
+## API Overview
 
 ### Core Classes
 
-- **QueueManager**: Singleton manager for multiple queues
-- **Queue**: Individual queue for a model with rate limiting
-
-### Models
-
-- **ModelConfig**: Configuration for a model
-- **QueueRequest**: Request to be processed
-- **QueueResponse**: Response from processing
-- **RateLimiterConfig**: Configuration for a single rate limiter
-- **RateLimiterType**: Enum for rate limiter types
-- **RequestStatus**: Enum for request status
+- `QueueManager`: Singleton manager for multiple model queues
+- `Queue`: Individual queue for a model with rate limiting
+- `ModelConfig`: Configuration for a model and its rate limiters
+- `QueueRequest`: Request to be processed
+- `QueueResponse`: Response from processing
+- `RateLimiterConfig`: Configuration for a single rate limiter
+- `RateLimiterType`: Enum for rate limiter types (RPM, RPD, TPM, TPD, CONCURRENT)
+- `RequestStatus`: Enum for request status (PENDING, PROCESSING, COMPLETED, FAILED, TIMEOUT)
 
 ### Exceptions
 
-- **LLMQueueException**: Base exception
-- **RateLimitExceeded**: Rate limit exceeded
-- **QueueTimeout**: Queue operation timeout
-- **ModelNotRegistered**: Model not found
-- **InvalidConfiguration**: Invalid config
-- **ProcessingError**: Processing failed
+- `LLMQueueException`: Base exception
+- `RateLimitExceeded`: Rate limit exceeded
+- `QueueTimeout`: Queue operation timeout
+- `ModelNotRegistered`: Model not found in manager
+- `InvalidConfiguration`: Invalid configuration provided
+- `ProcessingError`: Request processing failed
+
+## Testing
+
+```bash
+# PR Gate (unit tests only - no external dependencies)
+uv run pytest -m "not integration and not e2e" -q
+
+# Full test suite
+uv run pytest -q
+
+# With coverage
+uv run pytest -m "not integration and not e2e" --cov --cov-report=term-missing
+```
+
+## Configuration
+
+### Rate Limiter Types
+
+- `RPM`: Requests per minute
+- `RPD`: Requests per day
+- `TPM`: Tokens per minute (input + output)
+- `TPD`: Tokens per day
+- `ITPM`: Input tokens per minute
+- `OTPM`: Output tokens per minute
+- `CONCURRENT`: Maximum concurrent requests
+
+### Environment Variables
+
+No environment variables required. All configuration is done through code.
+
+## Documentation
+
+- [Development Guide](docs/development.md) - Setup, testing, and development workflow
+- [API Reference](docs/api-reference.md) - Complete API documentation
+- [Architecture](docs/architecture.md) - System design and patterns
+- [Rate Limiter Chain](docs/dev/RATE_LIMITER_INDEX.md) - Deep dive into rate limiting
 
 ## Examples
 
-See the [examples](examples/) directory for more:
+See the [examples](examples/) directory:
 
-- [Basic Usage](examples/basic_usage.py)
-- [OpenAI Integration](examples/openai_example.py)
-- [Anthropic Integration](examples/anthropic_example.py)
-- [Concurrent Mode](examples/concurrent_mode.py)
-- [Advanced Features](examples/advanced_usage.py)
-
-## Development
-
-### Setup
-
-```bash
-git clone https://github.com/yourusername/llm-queue.git
-cd llm-queue
-pip install -e ".[dev]"
-```
-
-### Run Tests
-
-```bash
-pytest
-```
-
-### Code Formatting
-
-```bash
-black src/ tests/
-isort src/ tests/
-```
-
-### Type Checking
-
-```bash
-mypy src/
-```
-
-### Pre-commit Hooks
-
-```bash
-pre-commit install
-pre-commit run --all-files
-```
+- [basic_usage.py](examples/basic_usage.py) - Simple usage example
+- [openai_example.py](examples/openai_example.py) - OpenAI integration
+- [anthropic_example.py](examples/anthropic_example.py) - Anthropic integration
+- [concurrent_mode.py](examples/concurrent_mode.py) - Concurrent limiting example
+- [advanced_usage.py](examples/advanced_usage.py) - Advanced features
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please:
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes with tests
+4. Ensure all tests pass
+5. Submit a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built with [Pydantic](https://docs.pydantic.dev/) for data validation
-- Inspired by the need for efficient LLM API management
-
-## Roadmap
-
-- [x] Token-based rate limiting (TPM, TPD)
-- [x] Multi-rate limiter support
-- [ ] Priority queue support
-- [ ] Request deduplication
-- [ ] Distributed queue (Redis backend)
-- [ ] Prometheus metrics exporter
-- [ ] Dashboard UI
-- [ ] Official integrations (OpenAI, Anthropic, etc.)
+MIT
 
 ## Support
 
-- 📧 Email: your.email@example.com
-- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/llm-queue/issues)
-- 📖 Documentation: [Read the Docs](https://llm-queue.readthedocs.io)
-
----
-
-Made with ❤️ for the LLM community
+- Issues: [GitHub Issues](https://github.com/Ganzzi/llm-queue/issues)
+- Documentation: See [docs](docs/)

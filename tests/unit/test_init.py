@@ -1,6 +1,9 @@
 """Test package initialization."""
 
+import pytest
 
+
+@pytest.mark.unit
 def test_imports():
     """Test that all public APIs are importable."""
     from llm_queue import (
@@ -30,6 +33,7 @@ def test_imports():
     assert Queue is not None
 
 
+@pytest.mark.unit
 def test_version():
     """Test version string."""
     from llm_queue import __version__
